@@ -192,6 +192,14 @@ not deleted automatically; remove them from the package page when no longer
 needed. Every build is smoke-tested first: it starts with no settings and answers
 `/api/v1/health`, and the image checks find no test tooling.
 
+The same `vX.Y.Z` tag also publishes the Python package to PyPI
+(`.github/workflows/pypi.yml`, https://pypi.org/p/heliopuddle). It builds the sdist and
+wheel, checks the tag equals the `pyproject.toml` version, smoke tests the wheel,
+then uploads with PyPI trusted publishing (no token secret) from the `pypi`
+environment. Setup on pypi.org is a trusted publisher for owner
+`ImperialCollegeLondon`, repository `heliopuddle`, workflow `pypi.yml`,
+environment `pypi`. A manual run builds and checks without publishing.
+
 ## Prefect
 
 - `PREFECT_API_URL` unset: hp starts `prefect server start` as a child process
