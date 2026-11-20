@@ -4,13 +4,7 @@ name: PyPI package
 # when a version tag vX.Y.Z is pushed; the tag must equal the pyproject.toml
 # version (pre-releases too, e.g. tag v1.2.0rc1 for version 1.2.0rc1).
 #
-# Uses PyPI trusted publishing (OIDC), so there is no API token secret. One-off
-# setup on pypi.org (Account > Publishing > Add a pending publisher, or the
-# project's Settings > Publishing once it exists):
-#   owner ImperialCollegeLondon, repository heliopuddle, workflow pypi.yml,
-#   environment pypi.
-# Create the matching "pypi" environment in this repository (Settings >
-# Environments); add required reviewers there to gate each release.
+# Uses PyPI trusted publishing (OIDC), so there is no API token secret. 
 #
 # A manual run (Actions > PyPI package > Run workflow) builds and checks the
 # distributions without publishing.
