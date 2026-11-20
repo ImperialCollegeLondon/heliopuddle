@@ -59,7 +59,7 @@ jobs:
           uv pip install --python /tmp/smoke "heliopuddle[cli] @ file://$PWD/$wheel"
           /tmp/smoke/bin/heliopuddle --help
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -76,7 +76,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
