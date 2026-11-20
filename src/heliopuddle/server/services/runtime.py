@@ -248,17 +248,23 @@ class EmbeddedPrefectServer:
         return "\n".join(text.splitlines()[-lines:])
 
     def stop(self, timeout: float = STOP_TIMEOUT_S) -> None:
-        """Stop the server: SIGTERM, then SIGKILL after ``timeout`` seconds."""
+        """Stop the server, forcing termination after ``timeout`` seconds."""
         process, self.process = self.process, None
         if process is None or process.poll() is not None:
             return
         logger.info("Stopping the embedded Prefect server")
-        _signal_group(process, signal.SIGTERM)
+        if sys.platform == "win32":
+            process.terminate()
+        else:
+            _signal_group(process, signal.SIGTERM)
         try:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             logger.warning("The embedded Prefect server did not stop; killing it")
-            _signal_group(process, signal.SIGKILL)
+            if sys.platform == "win32":
+                process.kill()
+            else:
+                _signal_group(process, signal.SIGKILL)
             process.wait(timeout=timeout)
 
 

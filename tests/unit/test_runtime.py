@@ -5,12 +5,14 @@ from __future__ import annotations
 import contextvars
 import os
 import socket
+import subprocess
 import sys
 import types
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, call
 
 import httpx
 import pytest
@@ -213,6 +215,34 @@ def test_embedded_server_killed_when_sigterm_is_ignored(tmp_path: Path) -> None:
     server.stop(timeout=1.0)
 
     assert process.poll() is not None
+
+
+@pytest.mark.req("SVC-01")
+@pytest.mark.parametrize("times_out", [False, True])
+def test_embedded_server_stops_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, times_out: bool
+) -> None:
+    process = MagicMock(spec=subprocess.Popen)
+    process.poll.return_value = None
+    if times_out:
+        process.wait.side_effect = [subprocess.TimeoutExpired("prefect", 1), 0]
+    server = EmbeddedPrefectServer(home=tmp_path)
+    server.process = process
+
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "platform", "win32")
+        patch.delattr(os, "killpg", raising=False)
+        patch.delattr(runtime.signal, "SIGKILL", raising=False)
+        server.stop(timeout=1)
+
+    process.terminate.assert_called_once_with()
+    if times_out:
+        process.kill.assert_called_once_with()
+        assert process.wait.call_args_list == [call(timeout=1), call(timeout=1)]
+    else:
+        process.kill.assert_not_called()
+        process.wait.assert_called_once_with(timeout=1)
+    assert server.process is None
 
 
 @pytest.mark.req("SVC-01")
