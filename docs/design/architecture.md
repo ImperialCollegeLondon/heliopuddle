@@ -37,6 +37,7 @@ src/heliopuddle/
   preview/           bounded content previews (CSV, JSON, text, Parquet, CDF; M6)
   pipelines/         stage framework (M8)
   cli.py             `heliopuddle server start ...`
+  cli_entry.py       the console script: install hint when the cli extra is missing
 ```
 
 ## Components and boundaries
@@ -70,6 +71,8 @@ src/heliopuddle/
 - **cli** (`cli.py`, `cli_user.py`, the `cli_file/` package): `server start` and
   `db upgrade` import the server lazily; `user ...` and `file ...` use only
   the client, so they work from `heliopuddle[cli]` on any machine.
+  The console script is `cli_entry.main`, which prints how to install the
+  `cli` extra (instead of a traceback) when `typer` is missing.
 - **api** validates requests, calls `models`, and submits flow runs. It does
   no bulk work inline (listing, bulk copying/hashing). It verifies a single
   registered file by running the `verify_file` task's

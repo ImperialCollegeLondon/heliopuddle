@@ -56,7 +56,7 @@ smb = ["smbprotocol>=1.17.0"]
 all = ["heliopuddle[server,cli,s3,azure,gcs,sftp,smb]"]
 
 [project.scripts]
-heliopuddle = "heliopuddle.cli:app"
+heliopuddle = "heliopuddle.cli_entry:main"
 
 # The test harness's fixtures (heliopuddle_fake, heliopuddle_store) in any
 # project that installs heliopuddle (CLI-14).

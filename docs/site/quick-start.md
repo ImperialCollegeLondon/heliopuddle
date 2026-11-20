@@ -10,6 +10,9 @@ The default install is small: only the Python client. Add extras for the rest.
 | `pip install "heliopuddle[server,azure]"` | a server with Azure Blob storage (also `s3`, `gcs`, `sftp`, `smb`) |
 | `pip install "heliopuddle[all]"` | server, CLI and every storage backend |
 
+The `heliopuddle` command is installed with every option, but without the `cli`
+extra it only prints how to install it.
+
 With [uv](https://docs.astral.sh/uv/) you can install it as a tool instead:
 `uv tool install "heliopuddle[server]"`.
 

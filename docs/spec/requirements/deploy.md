@@ -162,9 +162,13 @@ the server's dependency pins. The `cli` extra adds `typer` for the
 `heliopuddle file` and `heliopuddle user` commands (CLI-15). The server and
 the services need the `server` extra (which includes `cli`);
 `heliopuddle[all]` is `server` and `cli` plus every storage backend extra, and
-is what the Docker image and the dev group install.
-*Verify:* unit tests of `pyproject.toml` and that `heliopuddle.client` imports
-with every server-only package blocked.
+is what the Docker image and the dev group install. The `heliopuddle` console
+script (`heliopuddle.cli_entry:main`) is installed by the core package too;
+without the `cli` extra it prints `pip install "heliopuddle[cli]"` to stderr and
+exits 1 instead of a traceback.
+*Verify:* unit tests of `pyproject.toml`, that `heliopuddle.client` imports
+with every server-only package blocked, and that the command prints the
+install hint with `typer` blocked.
 
 **DEP-18 (M6)** **Client floors.** The core dependencies and the `cli` extra
 are as loose as possible so the client, test harness and file CLI install
