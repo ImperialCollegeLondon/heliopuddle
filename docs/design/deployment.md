@@ -102,7 +102,7 @@ Flags: `--host`, `--port`, `--no-api`, `--no-ui`, `--no-services`,
 ```bash
 docker run -p 8080:8080 -p 127.0.0.1:4200:4200 \
   -v $PWD/data:/data -v $PWD/examples/projects:/config \
-  -v hp-state:/var/lib/heliopuddle ghcr.io/imperialcollegelondon/heliopuddle:latest
+  -v hp-state:/var/lib/heliopuddle heliopuddle/heliopuddle:latest
 ```
 
 Clients write to the store themselves, using the storage location URL the API
@@ -149,7 +149,7 @@ ghcr.io only (see the tags below). A fork publishes to its own
 ```bash
 docker run -d --name heliopuddle -p 8080:8080 -p 127.0.0.1:4200:4200 \
   -v hp-state:/var/lib/heliopuddle -v /srv/heliopuddle/data:/data \
-  ghcr.io/imperialcollegelondon/heliopuddle:latest
+  heliopuddle/heliopuddle:latest
 docker logs heliopuddle 2>&1 | grep "first admin"     # the admin password
 ```
 
@@ -418,7 +418,7 @@ export AZURE_CONN="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;Ac
 # config/blob.yaml: url az://data/demo, create_root: true, connection_string: "${AZURE_CONN}"
 docker run -d --name hp --network container:azurite -e AZURE_CONN \
   -v $PWD/config:/config -v hp-state:/var/lib/heliopuddle \
-  ghcr.io/imperialcollegelondon/heliopuddle:latest
+  heliopuddle/heliopuddle:latest
 ```
 
 hp's ports are published on the Azurite container because the hp container

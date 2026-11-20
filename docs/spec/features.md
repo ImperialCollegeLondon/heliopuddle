@@ -482,7 +482,7 @@ In scope:
 - The Docker image is always published to the GitHub container registry
   (`ghcr.io/<owner>/<repo>`); Docker Hub is an opt-in extra target
   (`DOCKERHUB_REPOSITORY`). Pull requests get `pr-<number>` images. The docs
-  and compose examples use `ghcr.io/imperialcollegelondon/heliopuddle`.
+  and compose examples use the Docker Hub image `heliopuddle/heliopuddle`.
 - Flow and task runs log their significant changes (transfers, deletes,
   verifies, uploads, index summaries) through Prefect's run logger at INFO, so
   they show in the Prefect UI (SVC-30); the docs say how to set Prefect logging

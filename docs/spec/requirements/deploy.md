@@ -146,8 +146,8 @@ and a pull request to `main` gets only `pr-<number>` and
 `pr-<number>-<sha>` (its head commit; linux/amd64, ghcr.io only; a PR from a
 fork is built and smoke-tested but not pushed), so development builds never
 move `latest`, `main` or a version tag. The compose examples, README and
-deployment docs run the canonical image
-`ghcr.io/imperialcollegelondon/heliopuddle`. Every
+deployment docs run the canonical image, the Docker Hub
+`heliopuddle/heliopuddle` (ghcr.io has the same tags plus pull request builds). Every
 build is smoke-tested before it is pushed: it starts with no settings and
 answers `/api/v1/health`, and `docker/image_checks.py` finds no test tooling
 (pytest, Playwright, testcontainers, ...) or test files in it. The e2e image

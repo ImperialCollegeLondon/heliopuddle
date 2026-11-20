@@ -44,7 +44,7 @@ services:
       start_period: 10s
 
   heliopuddle:
-    image: ${HELIOPUDDLE_IMAGE:-ghcr.io/imperialcollegelondon/heliopuddle:latest}
+    image: ${HELIOPUDDLE_IMAGE:-heliopuddle/heliopuddle:latest}
     restart: unless-stopped
     depends_on:
       postgres:

@@ -194,7 +194,7 @@ def test_published_images_link_back_to_the_repository() -> None:
     assert "org.opencontainers.image.source=" in meta["with"]["labels"]
 
 
-CANONICAL_IMAGE = "ghcr.io/imperialcollegelondon/heliopuddle"
+CANONICAL_IMAGE = "heliopuddle/heliopuddle"  # Docker Hub
 
 
 @pytest.mark.req("DEP-16")
