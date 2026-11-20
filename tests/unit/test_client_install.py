@@ -155,3 +155,48 @@ def test_floor_script_pins_every_client_dependency() -> None:
     pins = module.floor_pins()
     assert {p.split("==")[0].lower() for p in pins} == CLIENT_DEPENDENCIES | {"typer"}
     assert "pydantic==2.5.0" in pins
+
+
+@pytest.mark.req("DEP-17", "CLI-15")
+def test_console_script_is_the_guarded_entry_point() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    assert project["scripts"] == {"heliopuddle": "heliopuddle.cli_entry:main"}
+
+
+@pytest.mark.req("DEP-17", "CLI-15")
+def test_command_without_the_cli_extra_says_how_to_install_it() -> None:
+    code = textwrap.dedent(
+        """
+        import importlib.abc, sys
+
+        class Block(importlib.abc.MetaPathFinder):
+            def find_spec(self, name, path=None, target=None):
+                if name.split(".")[0] == "typer":
+                    raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+                return None
+
+        sys.meta_path.insert(0, Block())
+        sys.argv = ["heliopuddle", "--help"]
+        from heliopuddle.cli_entry import main
+        main()
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 1, result.stderr
+    assert 'pip install "heliopuddle[cli]"' in result.stderr
+    assert "Traceback" not in result.stderr
+    assert result.stdout == ""
+
+
+@pytest.mark.req("CLI-15")
+def test_command_with_the_cli_extra_runs_the_cli() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "from heliopuddle.cli_entry import main; main()", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "heliopuddle: a multi-location datastore manager" in result.stdout

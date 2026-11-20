@@ -1,0 +1,83 @@
+name: PyPI package
+
+# Publishes the heliopuddle sdist and wheel to PyPI (https://pypi.org/p/heliopuddle)
+# when a version tag vX.Y.Z is pushed; the tag must equal the pyproject.toml
+# version (pre-releases too, e.g. tag v1.2.0rc1 for version 1.2.0rc1).
+#
+# Uses PyPI trusted publishing (OIDC), so there is no API token secret. 
+#
+# A manual run (Actions > PyPI package > Run workflow) builds and checks the
+# distributions without publishing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          # No cache for release builds (cache poisoning).
+          enable-cache: false
+
+      - name: check the tag matches the package version
+        if: github.ref_type == 'tag'
+        run: |
+          package=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$package" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pyproject version $package."
+            exit 1
+          fi
+
+      - name: build sdist and wheel
+        run: uv build
+
+      - name: check metadata
+        run: uvx twine check --strict dist/*
+
+      - name: smoke test the wheel (client, then client + CLI)
+        run: |
+          wheel=$(ls dist/*.whl)
+          uv venv /tmp/smoke
+          uv pip install --python /tmp/smoke "$wheel"
+          /tmp/smoke/bin/python -c "import heliopuddle.client"
+          uv pip install --python /tmp/smoke "heliopuddle[cli] @ file://$PWD/$wheel"
+          /tmp/smoke/bin/heliopuddle --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/heliopuddle
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
