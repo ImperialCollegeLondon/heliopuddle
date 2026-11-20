@@ -1,0 +1,22 @@
+# Only pyproject.toml, uv.lock, README.md, LICENSE, src/ and examples/ are used.
+.git
+.github
+.claude
+.venv
+.reports
+.heliopuddle
+.pytest_cache
+.ruff_cache
+.mypy_cache
+**/__pycache__
+**/*.py[cod]
+.coverage*
+coverage.xml
+htmlcov
+dist
+build
+docs
+tests
+scripts
+docker
+*.log

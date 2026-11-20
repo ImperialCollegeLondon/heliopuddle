@@ -1,0 +1,77 @@
+{# Shared pieces: state badges, pills, notices, hidden fields, the legend. #}
+
+{% macro st(state, small=false) -%}
+{%- set s = state_style(state) -%}
+<span class="st {{ s.css }}{% if small %} st-sm{% endif %}" role="img" title="{{ s.label }}" aria-label="{{ s.label }}">{{ s.symbol }}</span>
+{%- endmacro %}
+
+{% macro state_pill(state, text=none) -%}
+{%- set s = state_style(state) -%}
+<span class="pill {{ s.css }}"><span aria-hidden="true">{{ s.symbol }}</span> {{ text or s.label }}</span>
+{%- endmacro %}
+
+{% macro tone_pill(tone, text) -%}
+<span class="pill st-{{ tone }}">{{ text }}</span>
+{%- endmacro %}
+
+{% macro latest_pill() -%}<span class="pill pill-latest">latest</span>{%- endmacro %}
+
+{% macro file_pills(f) -%}
+{% if f.is_latest %}{{ latest_pill() }}{% endif %}
+{% if f.deleted_at %}<span class="pill pill-deleted">deleted</span>{% elif f is not latest_eligible %}<span class="pill pill-ineligible" title="No pending or available copy">not latest-eligible</span>{% endif %}
+{% if f.ignored_from_all_rules %}<span class="pill pill-ignored" title="Ignored from all rules">ignored by rules</span>{% endif %}
+{%- endmacro %}
+
+{% macro notice(n) -%}
+{% if n %}
+<div class="notice" role="status">
+  <span class="notice-icon" aria-hidden="true">◷</span>
+  <span>
+    {% if n.kind == "reconcile" %}Reconcile run submitted{% elif n.kind == "index" %}{% if n.mode %}{{ n.mode | capitalize }} index{% else %}Index{% endif %} run submitted{% else %}Rule run submitted{% endif %}:
+    {% if n.url %}<a href="{{ n.url }}" target="_blank" rel="noopener">view run {{ n.run_id }} in Prefect ↗</a>{% else %}flow run <span class="mono">{{ n.run_id }}</span>{% endif %}
+  </span>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro hidden(pairs, skip=()) -%}
+{% for name, value in pairs %}{% if name not in skip %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
+{%- endmacro %}
+
+{% macro legend(include_none=true) -%}
+<ul class="legend" aria-label="Copy states">
+  {% for s in state_order %}{% if s.value != "deleted" %}<li>{{ st(s, true) }} {{ s.value }}</li>{% endif %}{% endfor %}
+  {% if include_none %}<li>{{ st(none, true) }} no copy</li>{% endif %}
+</ul>
+{%- endmacro %}
+
+{% macro when(value) -%}
+{% if value %}<time datetime="{{ value.isoformat() }}" title="{{ value | datetime }}">{{ value | ago }}</time>{% else %}<span class="muted">never</span>{% endif %}
+{%- endmacro %}
+
+{% macro logo(size=28) -%}
+<svg class="logo" width="{{ size }}" height="{{ size }}" viewBox="0 0 28 28" aria-hidden="true"><path d="M3 18a11 11 0 0 1 22 0" fill="#FF8A3D"/><path d="M1 21h26M5 24h18" stroke="#9FB0FF" stroke-width="1.6" stroke-linecap="round"/></svg>
+{%- endmacro %}
+
+{% macro icon(name, size=16) -%}
+{%- if name == "search" -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+{%- elif name == "download" -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+{%- elif name == "close" -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+{%- elif name == "check" -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+{%- elif name == "columns" -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></svg>
+{%- elif name == "storage" -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro mark(text, words) -%}
+{%- set lowered = text | lower -%}
+{%- set ns = namespace(start=-1, length=0) -%}
+{%- for w in words -%}{%- set i = lowered.find(w | lower) -%}{%- if ns.start < 0 and i >= 0 -%}{%- set ns.start = i -%}{%- set ns.length = w | length -%}{%- endif -%}{%- endfor -%}
+{%- if ns.start >= 0 -%}{{ text[:ns.start] }}<mark>{{ text[ns.start:ns.start + ns.length] }}</mark>{{ text[ns.start + ns.length:] }}{%- else -%}{{ text }}{%- endif -%}
+{%- endmacro %}

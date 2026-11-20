@@ -1,0 +1,7 @@
+# Example project for the Keycloak manual test: one local storage location
+# under $HELIOPUDDLE_DEMO_DATA (default /tmp/hp-keycloak-demo).
+project: demo
+storage_locations:
+  - name: primary
+    url: file://${HELIOPUDDLE_DEMO_DATA:-/tmp/hp-keycloak-demo}/demo
+    accept_external_changes: true

@@ -1,0 +1,37 @@
+# heliopuddle on its own: SQLite and the embedded Prefect server, no other services.
+#
+#   docker compose -f docker/compose.yaml up -d
+#   docker compose -f docker/compose.yaml logs heliopuddle | grep "first admin"   # the admin password
+#
+# Then open http://localhost:8080 (UI and API) and http://localhost:4200 (Prefect).
+# HELIOPUDDLE_IMAGE picks another image, e.g. ghcr.io/imperialcollegelondon/heliopuddle:main
+# (until the first release) or :pr-<number> to try a pull request.
+# See docs/design/deployment.md, "Docker image".
+
+services:
+  heliopuddle:
+    image: ${HELIOPUDDLE_IMAGE:-ghcr.io/imperialcollegelondon/heliopuddle:latest}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # API (/api/v1) and UI (/)
+      - "127.0.0.1:4200:4200"   # embedded Prefect server and UI
+    volumes:
+      # State: the SQLite database, the embedded Prefect database and the auth
+      # signing key. Keep this volume; deleting it resets heliopuddle.
+      - hp-state:/var/lib/heliopuddle
+      # Files: the default storage location (file:///data in the example
+      # project). To use a host directory instead, mount it here, e.g.
+      # `- /srv/heliopuddle/data:/data`, and make it writable by uid 10001.
+      - hp-data:/data
+      # Project YAML (optional). Without a mount the image's example project
+      # is used; mount your own directory of project files to replace it:
+      # - ./projects:/config:ro
+    # Optional settings (HELIOPUDDLE_*, PREFECT_*), one per line; see
+    # docker/heliopuddle.env.example. The file need not exist.
+    env_file:
+      - path: heliopuddle.env
+        required: false
+
+volumes:
+  hp-state:
+  hp-data:

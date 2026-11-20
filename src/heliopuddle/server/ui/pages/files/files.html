@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Files · {{ project }} · heliopuddle{% endblock %}
+{% block main_class %}page-wide{% endblock %}
+{% block content %}
+<div class="page-head page-head-wide">
+  <div class="page-title">
+    <h1>Files</h1>
+    <span class="mono sub">{{ summary.files | number }} live · {{ summary.bytes | human_size }}</span>
+  </div>
+</div>
+
+<nav class="vtabs" aria-label="Views">
+  {% for t in tabs %}
+  <a href="{{ t.url }}"{% if t.active %} aria-current="page"{% endif %}>{{ t.label }} <span class="cnt{% if t.tone and t.count %} st-{{ t.tone }}{% endif %}">{{ t.count | number }}</span></a>
+  {% endfor %}
+</nav>
+
+<div class="chipbar">
+  <div class="chips" aria-label="Filters">
+    {% for c in chips %}
+    <a class="chip on" href="{{ c.remove_url }}" aria-label="Remove filter {{ c.label }}{% if c.value %} {{ c.value }}{% endif %}">{{ c.label }}{% if c.value %}: <span class="chip-value">{{ c.value }}</span>{% endif %} <span aria-hidden="true">✕</span></a>
+    {% endfor %}
+
+    <details class="menu chip-add">
+      <summary class="chip">+ Path</summary>
+      <form class="menu-panel stack" method="get" action="{{ path_for('ui_files', project=project) }}">
+        {{ m.hidden(keep, skip=("path",)) }}
+        <label class="field">Path glob
+          <input type="text" name="path" value="{{ filters.path }}" placeholder="e.g. data/**/*.csv" class="mono">
+        </label>
+        <span class="small muted"><span class="mono">*</span> within a folder, <span class="mono">**</span> any depth, <span class="mono">?</span> one character</span>
+        <button class="btn btn-pri btn-sm" type="submit">Apply</button>
+      </form>
+    </details>
+
+    <details class="menu chip-add">
+      <summary class="chip">+ State</summary>
+      <form class="menu-panel stack" method="get" action="{{ path_for('ui_files', project=project) }}">
+        {{ m.hidden(keep, skip=("state",)) }}
+        <fieldset class="checks">
+          <legend class="lbl">Any copy in</legend>
+          {% for s in state_order %}
+          <label class="check">{{ m.st(s, true) }}<input type="checkbox" name="state" value="{{ s.value }}"{% if s in filters.states %} checked{% endif %}> {{ s.value }}</label>
+          {% endfor %}
+        </fieldset>
+        <button class="btn btn-pri btn-sm" type="submit">Apply</button>
+      </form>
+    </details>
+
+    <details class="menu chip-add">
+      <summary class="chip">+ Storage location</summary>
+      <form class="menu-panel stack" method="get" action="{{ path_for('ui_files', project=project) }}">
+        {{ m.hidden(keep, skip=("storage_location",)) }}
+        <label class="field">Has a copy in
+          <select name="storage_location">
+            <option value="">any storage location</option>
+            {% for name in all_columns %}<option value="{{ name }}"{% if filters.storage_location == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select>
+        </label>
+        <span class="small muted">With a state filter, the copy here must be in that state.</span>
+        <button class="btn btn-pri btn-sm" type="submit">Apply</button>
+      </form>
+    </details>
+
+    <details class="menu chip-add">
+      <summary class="chip">+ Content date</summary>
+      <form class="menu-panel stack" method="get" action="{{ path_for('ui_files', project=project) }}">
+        {{ m.hidden(keep, skip=("content_from", "content_to")) }}
+        <label class="field">From <input type="date" name="content_from" value="{{ filters.content_from or '' }}"></label>
+        <label class="field">To (inclusive) <input type="date" name="content_to" value="{{ filters.content_to or '' }}"></label>
+        <button class="btn btn-pri btn-sm" type="submit">Apply</button>
+      </form>
+    </details>
+
+    {% if not filters.latest_only and filters.view != "latest" %}
+    <form class="inline" method="get" action="{{ path_for('ui_files', project=project) }}">
+      {{ m.hidden(keep, skip=("latest_only",)) }}<input type="hidden" name="latest_only" value="1">
+      <button class="chip" type="submit">+ Latest only</button>
+    </form>
+    {% endif %}
+    {% if not filters.include_deleted and filters.view != "deleted" %}
+    <form class="inline" method="get" action="{{ path_for('ui_files', project=project) }}">
+      {{ m.hidden(keep, skip=("include_deleted",)) }}<input type="hidden" name="include_deleted" value="1">
+      <button class="chip" type="submit">+ Include deleted</button>
+    </form>
+    {% endif %}
+    {% if filters.active %}<a class="chip-clear" href="{{ clear_url }}">Clear filters</a>{% endif %}
+  </div>
+  <div class="chipbar-right">
+    <span class="muted small">{{ page.total | number }} {{ "match" if page.total == 1 else "matches" }} · newest first</span>
+    {% if all_columns | length > 1 %}
+    <details class="menu columns-menu">
+      <summary class="btn btn-sm">{{ m.icon("columns", 14) }} Columns <span class="caret" aria-hidden="true">▾</span></summary>
+      <form class="menu-panel menu-right stack" method="get" action="{{ path_for('ui_files', project=project) }}" data-columns>
+        {{ m.hidden(keep, skip=("columns",)) }}
+        <fieldset class="checks">
+          <legend class="lbl">State columns (up to 6)</legend>
+          {% for name in all_columns %}
+          <label class="check"><input type="checkbox" name="col" value="{{ name }}"{% if name in columns %} checked{% endif %}> {{ name }}</label>
+          {% endfor %}
+        </fieldset>
+        <button class="btn btn-pri btn-sm" type="submit" data-columns-apply>Apply</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+
+<div class="files-layout{% if inspector %} has-inspector{% endif %}">
+  <div class="files-main">
+    {% if page.items %}
+    <div class="tbl-wrap">
+      <table class="ft">
+        <thead>
+          <tr>
+            <th scope="col" class="col-path">Path</th>
+            <th scope="col">Ver</th>
+            <th scope="col" class="num">Size</th>
+            {% for name in columns %}<th scope="col" class="col-st" title="Copy state in {{ name }}">{{ name }}</th>{% endfor %}
+            <th scope="col">Content date</th>
+            <th scope="col">Created</th>
+            <th scope="col" class="col-by">Created by</th>
+            <th scope="col" class="col-rules">Rules</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in page.items %}
+          {%- set parts = f.path | split_path -%}
+          {%- set states = f | copy_map -%}
+          <tr class="row{% if f.id == selected_id %} sel{% endif %}{% if f.deleted_at %} deleted{% endif %}" data-file="{{ f.id }}"{% if f.id == selected_id %} aria-selected="true"{% endif %}>
+            <td class="col-path">
+              <a class="path-link mono" href="{{ path_for('ui_file_detail', project=project, file_id=f.id) }}" data-inspect="{{ path_for('ui_inspector', project=project, file_id=f.id) }}" data-row-url="{{ row_url(f) }}" title="{{ f.path }}"><span class="dir">{{ parts[0] }}</span>{{ parts[1] }}</a>
+              {% if f.deleted_at %}<span class="pill pill-deleted">deleted</span>{% elif f is not latest_eligible %}<span class="pill pill-ineligible" title="No pending or available copy">not latest-eligible</span>{% endif %}
+            </td>
+            <td class="mono nowrap">{{ f | version_label }}{% if f.is_latest %} {{ m.latest_pill() }}{% endif %}</td>
+            <td class="mono num nowrap" title="{{ f.size }} bytes">{{ f.size | human_size }}</td>
+            {% for name in columns %}<td class="col-st">{{ m.st(states.get(name)) }}</td>{% endfor %}
+            <td class="mono nowrap"{% if f.content_date %} title="{{ f.content_date | datetime }}"{% endif %}>{{ f.content_date.strftime("%Y-%m-%d") if f.content_date else "" }}</td>
+            <td class="nowrap muted"><time datetime="{{ f.created_at.isoformat() }}" title="{{ f.created_at | datetime }}">{{ f.created_at | ago }}</time></td>
+            <td class="nowrap muted col-by">{{ f.created_by or "" }}</td>
+            <td class="col-rules">
+              {% if not f.deleted_at and can('hp-writer') %}
+              <form class="inline" method="post" action="{{ path_for('ui_rules_ignore', project=project, file_id=f.id) }}">
+                <input type="hidden" name="ignored" value="{{ 'false' if f.ignored_from_all_rules else 'true' }}">
+                <input type="hidden" name="return_to" value="files">
+                <input type="hidden" name="return_query" value="{{ here_query }}">
+                <button class="switch{% if not f.ignored_from_all_rules %} on{% endif %}" type="submit" aria-pressed="{{ 'false' if f.ignored_from_all_rules else 'true' }}" aria-label="{{ 'Include in rules' if f.ignored_from_all_rules else 'Ignore from all rules' }}: {{ f.path }}" title="{{ 'Ignored from all rules: select to include' if f.ignored_from_all_rules else 'Included in rules: select to ignore' }}"><span class="knob"></span></button>
+              </form>
+              {% else %}
+              <span class="small {{ 'muted' if not f.ignored_from_all_rules else '' }}">{{ "ignored" if f.ignored_from_all_rules else "included" }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif filters.active or filters.view != "all" %}
+    <div class="empty-state"><p class="empty">No files match these filters.</p>{% if filters.active %}<a class="btn btn-sm" href="{{ clear_url }}">Clear filters</a>{% endif %}</div>
+    {% else %}
+    <div class="empty-state"><p class="empty">No files yet.</p><span class="small muted">Add files with the client or index a storage location.</span></div>
+    {% endif %}
+
+    <div class="tbl-foot">
+      {{ m.legend() }}
+      <div class="pager">
+        {% if page.items %}<span class="muted small">{{ first | number }}–{{ last | number }} of {{ page.total | number }}</span>{% endif %}
+        <details class="menu rows-menu">
+          <summary class="btn btn-sm">{{ limit }} rows <span class="caret" aria-hidden="true">▾</span></summary>
+          <div class="menu-panel menu-up menu-right">
+            <ul class="menu-list">
+              {% for size, href in size_urls %}<li><a href="{{ href }}"{% if size == limit %} aria-current="true"{% endif %}>{{ size }} rows</a></li>{% endfor %}
+            </ul>
+          </div>
+        </details>
+        {% if prev_url %}<a class="btn btn-sm" rel="prev" href="{{ prev_url }}">← Newer</a>{% else %}<span class="btn btn-sm disabled" aria-disabled="true">← Newer</span>{% endif %}
+        {% if next_url %}<a class="btn btn-sm" rel="next" href="{{ next_url }}">Older →</a>{% else %}<span class="btn btn-sm disabled" aria-disabled="true">Older →</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <aside id="inspector" class="inspector" aria-label="File inspector" data-close-url="{{ close_url }}"{% if not inspector %} hidden{% endif %}>
+    {% if inspector %}{% include "files/_inspector.html" %}{% endif %}
+  </aside>
+</div>
+{% endblock %}

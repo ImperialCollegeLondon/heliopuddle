@@ -1,0 +1,79 @@
+# heliopuddle with an external Postgres and an external Prefect server, and
+# optionally an external OIDC provider such as Keycloak. The image is the same
+# as in compose.yaml: only environment variables change.
+#
+#   cp docker/heliopuddle.env.example docker/heliopuddle.env   # optional: OIDC and other settings
+#   POSTGRES_PASSWORD=choose-one docker compose -f docker/compose.external.yaml up -d
+#
+# In production, point HELIOPUDDLE_DATABASE_URL and PREFECT_API_URL at your own
+# servers and drop the postgres and prefect services. See
+# docs/design/deployment.md, "Docker image".
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: heliopuddle
+      POSTGRES_USER: heliopuddle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heliopuddle -d heliopuddle"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  prefect:
+    image: prefecthq/prefect:3.9-python3.12
+    restart: unless-stopped
+    command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+    environment:
+      # The address your browser uses for the Prefect UI's API calls.
+      PREFECT_UI_API_URL: ${PREFECT_PUBLIC_URL:-http://localhost:4200}/api
+    ports:
+      - "127.0.0.1:4200:4200"
+    volumes:
+      - prefect-data:/root/.prefect
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  heliopuddle:
+    image: ${HELIOPUDDLE_IMAGE:-ghcr.io/imperialcollegelondon/heliopuddle:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prefect:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # External Postgres instead of SQLite (migrated at startup).
+      HELIOPUDDLE_DATABASE_URL: postgresql+psycopg://heliopuddle:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/heliopuddle
+      # External Prefect instead of the embedded one (checked at startup; hp fails
+      # fast if it is unreachable). The UI links to the public Prefect URL.
+      PREFECT_API_URL: http://prefect:4200/api
+      HELIOPUDDLE_PREFECT_UI_URL: ${PREFECT_PUBLIC_URL:-http://localhost:4200}
+    # OIDC (Keycloak), auth secrets and other settings go in heliopuddle.env;
+    # see heliopuddle.env.example. Without it hp uses local users.
+    env_file:
+      - path: heliopuddle.env
+        required: false
+    volumes:
+      # State still holds the auth signing key (unless HELIOPUDDLE_AUTH_SECRET_KEY
+      # is set) and staging files; keep it.
+      - hp-state:/var/lib/heliopuddle
+      - hp-data:/data
+      # - ./projects:/config:ro
+
+volumes:
+  pg-data:
+  prefect-data:
+  hp-state:
+  hp-data:

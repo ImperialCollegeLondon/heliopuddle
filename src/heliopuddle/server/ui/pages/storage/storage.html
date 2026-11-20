@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Storage · {{ project }} · heliopuddle{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Storage</h1>
+    <span class="sub">Where this project's files live. Configured in YAML; index runs are live.</span>
+  </div>
+</div>
+{% if items %}
+<section class="sl-grid" aria-label="Storage locations">
+  {% for i in items %}
+  {%- set sl = i.read -%}
+  {%- set s = i.summary -%}
+  <article class="card sl-card{% if not sl.active %} inactive{% endif %}">
+    <a class="sl-card-link" href="{{ path_for('ui_storage_location', project=project, name=sl.name) }}">
+      <span class="kind kind-{{ loop.index0 % 4 }}" aria-hidden="true">{{ (i.kind or "—")[:4] }}</span>
+      <span class="sl-card-title">
+        <span class="sl-name">{{ sl.name }}</span>
+        <span class="mono sl-url">{{ sl.url or "Restricted" }}</span>
+      </span>
+      {% if sl.active %}<span class="pill st-available">active</span>{% else %}<span class="pill st-none">inactive</span>{% endif %}
+    </a>
+    {% if s %}
+    <div class="figures">
+      <span class="figure"><span class="lbl">Files</span><span class="figure-value">{{ s.files | number }}</span></span>
+      <span class="figure"><span class="lbl">Stored</span><span class="figure-value">{{ s.bytes | human_size }}</span></span>
+      <span class="figure"><span class="lbl">Attention</span><span class="figure-value{% if s.states.get('missing', 0) + s.states.get('unknown', 0) %} alert{% endif %}">{{ (s.states.get('missing', 0) + s.states.get('unknown', 0)) | number }}</span></span>
+    </div>
+    <div class="segbar" role="img" aria-label="Copy states on {{ sl.name }}: {% for c in i.bar %}{% if c.count %}{{ c.count }} {{ c.label }}{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}">
+      {% for c in i.bar %}{% if c.count %}<span class="seg seg-{{ c.state }}" style="width: {{ c.share }}%"></span>{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+    <dl class="kv kv-compact">
+      <dt>Last full index</dt><dd>{{ m.when(sl.last_full_index_at) }}</dd>
+      <dt>Last incremental</dt><dd>{{ m.when(sl.last_incremental_index_at) }}</dd>
+    </dl>
+  </article>
+  {% endfor %}
+</section>
+{% else %}
+<div class="card empty-card"><p class="empty">No storage locations.</p></div>
+{% endif %}
+{% endblock %}

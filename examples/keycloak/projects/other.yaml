@@ -1,0 +1,6 @@
+# A second project, to show that project-scoped roles hide it (see README.md).
+project: other
+storage_locations:
+  - name: primary
+    url: file://${HELIOPUDDLE_DEMO_DATA:-/tmp/hp-keycloak-demo}/other
+    accept_external_changes: true

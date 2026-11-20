@@ -1,0 +1,137 @@
+{% import "_macros.html" as m with context %}
+{%- set scope_project = project or search_project | default("") -%}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{% block title %}heliopuddle{% endblock %}</title>
+  <link rel="preload" href="{{ path_for('ui_static', path='fonts/manrope-latin-wght.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ path_for('ui_static', path='fonts/ibm-plex-sans-latin-wght.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{ path_for('ui_static', path='hp.css') }}">
+  <link rel="icon" href="{{ path_for('ui_static', path='icon.svg') }}" type="image/svg+xml">
+  <script src="{{ path_for('ui_static', path='hp.js') }}" defer></script>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="hp-header">
+    <div class="hp-bar">
+      <a class="brand" href="{{ path_for('ui_index') }}" aria-label="heliopuddle home">{{ m.logo(28) }}<span class="brand-word">heliopuddle</span></a>
+      {% if project %}
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="{{ path_for('ui_index') }}">Projects</a>
+        <span class="sep" aria-hidden="true">/</span>
+        <details class="menu switcher">
+          <summary class="hdr-btn" aria-label="Project {{ project }}, switch project"><span class="switcher-name">{{ project }}</span> <span class="caret" aria-hidden="true">▾</span></summary>
+          <div class="menu-panel">
+            <span class="lbl">Switch project</span>
+            <ul class="menu-list">
+              {% for p in projects %}
+              <li><a href="{{ path_for('ui_overview', project=p) }}"{% if p == project %} aria-current="true"{% endif %}>{{ p }}{% if p == project %} <span class="muted">· current</span>{% endif %}</a></li>
+              {% endfor %}
+            </ul>
+            <a class="menu-foot" href="{{ path_for('ui_index') }}">All projects →</a>
+          </div>
+        </details>
+      </nav>
+      {% elif not login_page %}
+      <nav class="mainnav" aria-label="Main">
+        <a href="{{ path_for('ui_index') }}"{% if tab == "home" %} aria-current="page"{% endif %}>Projects</a>
+      </nav>
+      {% endif %}
+
+      {% if show_search %}
+      <form class="search" role="search" method="get" action="{{ path_for('ui_search') }}" data-suggest="{{ path_for('ui_suggest') }}">
+        <label class="search-box">
+          <span class="search-icon">{{ m.icon("search", 15) }}</span>
+          <input id="hp-search" type="search" name="q" value="{{ search_q }}" minlength="2" maxlength="200"
+                 placeholder="Search files in {{ scope_project or 'all projects' }}"
+                 aria-label="Search files in {{ scope_project or 'all projects' }}"
+                 autocomplete="off" spellcheck="false"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="hp-suggest">
+          <span class="search-scope" aria-hidden="true">{{ scope_project or "all projects" }}</span>
+        </label>
+        {% if scope_project %}<input type="hidden" name="project" value="{{ scope_project }}">{% endif %}
+        <div id="hp-suggest" class="suggest" role="listbox" aria-label="Matching files" hidden></div>
+      </form>
+      {% else %}<span class="bar-spacer"></span>
+      {% endif %}
+
+      {% if actions %}
+      <details class="menu actions">
+        <summary class="hdr-btn">Actions <span class="caret" aria-hidden="true">▾</span></summary>
+        <div class="menu-panel menu-wide">
+          <section class="menu-section" aria-labelledby="act-reconcile">
+            <h2 id="act-reconcile" class="lbl">Reconcile</h2>
+            <p class="small muted">Index every storage location, then apply the rules until nothing changes.</p>
+            <form class="stack" method="post" action="{{ path_for('ui_reconcile_now', project=project) }}">
+              <label class="check"><input type="checkbox" name="verify" value="true"> Verify (re-hash every available copy)</label>
+              {% if actions.rules %}
+              <input type="hidden" name="has_rules" value="1">
+              <label class="field">Rules
+                <select name="rules" multiple size="{{ [[actions.rules | length, 2] | max, 5] | min }}">
+                  {% for name in actions.rules %}<option value="{{ name }}" selected>{{ name }}</option>{% endfor %}
+                </select>
+              </label>
+              {% endif %}
+              <button class="btn btn-pri" type="submit">Reconcile now</button>
+            </form>
+          </section>
+          <section class="menu-section" aria-labelledby="act-index">
+            <h2 id="act-index" class="lbl">Index now</h2>
+            {% for sl in actions.storage_locations %}
+            <form class="index-row" method="post" action="{{ path_for('ui_index_now', project=project, storage_location=sl) }}">
+              <span class="index-name">{{ sl }}</span>
+              <button class="btn btn-sm" type="submit" name="mode" value="full" aria-label="Full index of {{ sl }}">Full</button>
+              <button class="btn btn-sm" type="submit" name="mode" value="incremental" aria-label="Incremental index of {{ sl }}">Incremental</button>
+            </form>
+            {% else %}
+            <p class="small muted">No active storage locations.</p>
+            {% endfor %}
+          </section>
+        </div>
+      </details>
+      {% endif %}
+
+      {% if prefect_url and not login_page %}<a class="hdr-link" href="{{ prefect_url }}" target="_blank" rel="noopener">Runs <span aria-hidden="true">↗</span></a>{% endif %}
+
+      {% if auth_user %}
+      <details class="menu usermenu">
+        <summary class="avatar" aria-label="User menu for {{ auth_user.username }}">{{ auth_user.username | initials }}</summary>
+        <div class="menu-panel menu-right session">
+          <span class="lbl">Signed in as</span>
+          <span class="user" data-user="{{ auth_user.username }}">{{ auth_user.username }}</span>
+          <span class="roles">{% for r in auth_user.roles %}<span class="role">{{ r }}</span>{% else %}<span class="muted">no roles</span>{% endfor %}</span>
+          <form method="post" action="{{ path_for('ui_logout') }}">
+            <button class="btn btn-block" type="submit">Log out</button>
+          </form>
+        </div>
+      </details>
+      {% elif header_user %}
+      <details class="menu usermenu">
+        <summary class="avatar" aria-label="User menu for {{ header_user }}">{{ header_user | initials }}</summary>
+        <div class="menu-panel menu-right session">
+          <span class="lbl">Signed in as</span>
+          <span class="user" data-user="{{ header_user }}">{{ header_user }}</span>
+          <span class="small muted">Identified by your sign-in proxy.</span>
+        </div>
+      </details>
+      {% endif %}
+    </div>
+
+    {% if project %}
+    <nav class="ptabs" aria-label="Project">
+      <a href="{{ path_for('ui_overview', project=project) }}"{% if tab == "overview" %} aria-current="page"{% endif %}>Overview</a>
+      <a href="{{ path_for('ui_files', project=project) }}"{% if tab == "files" %} aria-current="page"{% endif %}>Files</a>
+      <a href="{{ path_for('ui_storage', project=project) }}"{% if tab == "storage" %} aria-current="page"{% endif %}>Storage</a>
+      <a href="{{ path_for('ui_rules', project=project) }}"{% if tab == "rules" %} aria-current="page"{% endif %}>Rules</a>
+    </nav>
+    {% endif %}
+    {% block hero %}{% endblock %}
+  </header>
+  <main id="content" class="{% block main_class %}page{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

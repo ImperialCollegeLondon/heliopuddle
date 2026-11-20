@@ -1,0 +1,124 @@
+{# The file preview (UI-15): a fragment for hp.js, also included by file.html without JavaScript. #}
+{%- set p = pv.preview -%}
+{%- set f = pv.file -%}
+
+{% macro notice(kind, title, message) -%}
+<div class="pv-notice pv-{{ kind }}" role="status">
+  <span class="pv-notice-icon" aria-hidden="true">{% if kind == "error" %}!{% elif kind == "too_large" %}⇲{% else %}∅{% endif %}</span>
+  <div class="pv-notice-text">
+    <p class="pv-notice-title">{{ title }}</p>
+    {% if message %}<p class="pv-notice-msg">{{ message }}</p>{% endif %}
+  </div>
+  {% if f is downloadable %}<a class="btn btn-sm" href="{{ path_for('ui_download', project=project, file_id=f.id) }}" download>Download</a>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro attributes(attrs, title) -%}
+<details class="pv-attrs">
+  <summary><span class="pv-sum-title">{{ title }}</span><span class="cnt">{{ attrs | length }}</span></summary>
+  <dl class="pv-kv">
+    {% for key, value in attrs | dictsort %}<dt>{{ key }}</dt><dd>{{ value }}</dd>
+    {% endfor %}
+  </dl>
+</details>
+{%- endmacro %}
+
+{% macro data_table(t) -%}
+{%- set num = numeric_columns(t) -%}
+<div class="pv-scroll" tabindex="0" role="region" aria-label="{{ t.name or 'Table' }} preview">
+<table class="pv-table">
+  <thead><tr><th scope="col" class="pv-idx"><span class="visually-hidden">Row</span></th>{% for c in t.columns %}<th scope="col"{% if num[loop.index0] %} class="num"{% endif %}><span class="pv-col">{{ c.name }}</span>{% if c.type %}<span class="pv-type">{{ c.type }}</span>{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>
+    {% for row in t.rows %}<tr><td class="pv-idx">{{ loop.index }}</td>{% for v in row %}<td{% if num[loop.index0] %} class="num"{% endif %}>{% if v is none %}<span class="pv-null" title="null">—</span>{% else %}{{ v | cell }}{% endif %}</td>{% endfor %}</tr>
+    {% else %}<tr><td class="pv-idx"></td><td colspan="{{ t.columns | length or 1 }}" class="muted">No rows.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="pv-caption">{{ t | rows_caption }}{% if t.hidden_columns %} · {{ t.hidden_columns | number }} more {{ "column" if t.hidden_columns == 1 else "columns" }} not shown{% endif %}</p>
+{%- endmacro %}
+
+{% macro variables(t) -%}
+<details class="pv-vars">
+  <summary><span class="pv-sum-title">Variables · {{ t.variables | length }}</span></summary>
+  <ul class="pv-varlist">
+    {% for v in t.variables %}
+    <li>
+      {% if v.attributes %}<details class="pv-var"><summary>{% endif %}
+      <span class="pv-var-head">
+        <span class="pv-var-name">{{ v.name }}</span>
+        <span class="tag">{{ v.type }}</span>
+        <span class="pv-var-shape">{{ v.shape | shape }}</span>
+        <span class="pv-var-recs">{{ v.records | number }} {{ "record" if v.records == 1 else "records" }}</span>
+        {% if v.attributes %}<span class="pv-var-attrs">{{ v.attributes | length }} {{ "attribute" if v.attributes | length == 1 else "attributes" }}</span>{% endif %}
+      </span>
+      {% if v.attributes %}</summary>
+        <dl class="pv-kv">
+          {% for key, value in v.attributes | dictsort %}<dt>{{ key }}</dt><dd>{{ value }}</dd>
+          {% endfor %}
+        </dl>
+      </details>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</details>
+{%- endmacro %}
+
+<div class="pv" data-kind="{{ p.kind if p else 'unavailable' }}">
+{% if pv.unavailable %}
+  {{ notice("unavailable", pv.unavailable, none) }}
+{% else %}
+  {% if p.kind != "none" %}
+  <div class="pv-meta">
+    {% if p.format %}<span class="pv-format">{{ p.format | upper }}</span>{% endif %}
+    {% if p.kind == "table" and p.tables | length > 1 %}<span>{{ p.tables | length }} tables</span>{% endif %}
+    {% if p.storage_location %}<span>read from <a href="{{ path_for('ui_storage_location', project=project, name=p.storage_location) }}">{{ p.storage_location }}</a></span>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if p.kind == "table" %}
+    {% if p.attributes %}{{ attributes(p.attributes, "Global attributes" if p.format == "cdf" else "File attributes") }}{% endif %}
+    {% if p.message and p.tables %}<p class="pv-caption pv-skipped" role="note">{{ p.message }}</p>{% endif %}
+    {% set many = p.tables | length > 1 %}
+    {% for t in p.tables %}
+      {% set titled = many or t.name or t.variables %}
+      {% if many %}<details class="pv-tbl"{% if loop.first %} open{% endif %}>
+      <summary><span class="pv-tbl-title">{{ table_title(t, loop.index, p) }}</span><span class="pv-tbl-cols">{{ t.columns | length + t.hidden_columns }} {{ "column" if t.columns | length + t.hidden_columns == 1 else "columns" }}</span></summary>
+      {% else %}<div class="pv-tbl">
+      {% if titled %}<h3 class="pv-tbl-title">{{ table_title(t, loop.index, p) }}</h3>{% endif %}
+      {% endif %}
+        {{ data_table(t) }}
+        {% if t.variables %}{{ variables(t) }}{% endif %}
+      {% if many %}</details>{% else %}</div>{% endif %}
+    {% else %}
+      {{ notice("none", "No tables in this file.", p.message) }}
+    {% endfor %}
+
+  {% elif p.kind == "json" %}
+    <pre class="pv-code pv-json">{{ (p.text or "") | json_html }}</pre>
+    {% if p.text_truncated %}<p class="pv-caption">Showing the start of the file.</p>{% endif %}
+
+  {% elif p.kind == "text" %}
+    <pre class="pv-code">{{ p.text or "" }}</pre>
+    {% if p.text_truncated %}<p class="pv-caption">Showing the start of the file.</p>{% endif %}
+
+  {% elif p.kind == "markdown" %}
+    <div class="pv-md">{{ (p.text or "") | markdown }}</div>
+    {% if p.text_truncated %}<p class="pv-caption">Showing the start of the file.</p>{% endif %}
+
+  {% elif p.kind == "image" %}
+    {% if pv.image_ok %}
+    <figure class="pv-figure"><img class="pv-img" src="{{ path_for('ui_raw', project=project, file_id=f.id) }}" alt="{{ f.name }}" loading="lazy" decoding="async"></figure>
+    {% else %}
+    {{ notice("too_large", "This image is too large to show here.", "Images over 20 MiB are not shown in the page; download it instead.") }}
+    {% endif %}
+
+  {% elif p.kind == "too_large" %}
+    {{ notice("too_large", "Too large to preview", p.message) }}
+  {% elif p.kind == "error" %}
+    {{ notice("error", "Could not read this file", p.message) }}
+  {% else %}
+    {{ notice("none", "No preview for this format", p.message) }}
+  {% endif %}
+{% endif %}
+</div>

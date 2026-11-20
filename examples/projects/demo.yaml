@@ -1,0 +1,6 @@
+# A minimal project: one local storage location.
+project: demo
+storage_locations:
+  - name: primary
+    url: file://${HELIOPUDDLE_DEMO_DATA:-/data}
+    accept_external_changes: true

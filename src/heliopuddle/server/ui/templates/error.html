@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · heliopuddle{% endblock %}
+{% block content %}
+<section class="card error-card" aria-labelledby="error-heading">
+  <span class="error-code" aria-hidden="true">{{ title.split(" ")[-1] if title.startswith("Error ") else "!" }}</span>
+  <h1 id="error-heading">{{ title }}</h1>
+  <p class="error">{{ message }}</p>
+  <p class="error-links">
+    {% if project %}<a class="btn" href="{{ path_for('ui_overview', project=project) }}">Back to {{ project }}</a>{% endif %}
+    <a class="btn" href="{{ path_for('ui_index') }}">Back to projects</a>
+  </p>
+</section>
+{% endblock %}

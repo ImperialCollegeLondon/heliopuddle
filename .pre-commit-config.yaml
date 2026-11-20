@@ -1,0 +1,24 @@
+# Install with: uv run pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks:
+      - id: ruff-format
+      - id: ruff-check
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types: [python]
+        pass_filenames: false
+      # CLI-04 / UI-05: client and UI may not import the database layer.
+      - id: import-contracts
+        name: import-contracts (lint-imports)
+        entry: uv run lint-imports
+        language: system
+        types: [python]
+        pass_filenames: false

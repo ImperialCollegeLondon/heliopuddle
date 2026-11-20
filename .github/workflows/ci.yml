@@ -1,0 +1,216 @@
+name: CI
+
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_FROZEN: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: lint (ruff, pyright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: ruff format
+        run: uv run ruff format --check .
+      - name: ruff check
+        run: uv run ruff check .
+      - name: pyright
+        run: uv run pyright
+
+  quality:
+    # Complexity (ruff C901, in the lint job), file length and duplicate code.
+    name: quality (file length, duplicate code)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: files at most 500 lines
+        run: uv run python scripts/check_file_length.py
+      - name: duplicate code (pylint duplicate-code)
+        run: uv run pylint src
+
+  import-contracts:
+    # Enforces CLI-04 and UI-05: heliopuddle.client and heliopuddle.server.ui
+    # may not import the database layer. A violation fails CI.
+    name: import-contracts (CLI-04, UI-05)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: lint-imports
+        run: uv run lint-imports
+
+  client-floor:
+    # DEP-18: the client, test harness and file CLI at their lowest allowed versions.
+    # The oldest supported Python: the floors predate wheels for newer ones.
+    name: client at dependency floors (Python 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install 3.11
+      - run: uv run --no-project python scripts/client_floor.py --python 3.11
+
+  unit:
+    name: unit (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install ${{ matrix.python-version }}
+      - run: uv sync --python ${{ matrix.python-version }}
+      # Coverage (and the requirement report) come from one Python version, 3.14:
+      # its sys.monitoring core is far cheaper than line tracing on the others,
+      # which measure the same code.
+      - name: pytest tests/unit (coverage)
+        if: ${{ matrix.python-version == '3.14' }}
+        run: >-
+          uv run --python ${{ matrix.python-version }} pytest tests/unit tests/client
+          -n auto --dist loadfile
+          --cov=heliopuddle --cov-report=xml --cov-report=term
+          --cov-fail-under=90
+          --req-report=.reports/req-unit.json
+      - name: pytest tests/unit
+        if: ${{ matrix.python-version != '3.14' }}
+        run: >-
+          uv run --python ${{ matrix.python-version }} pytest tests/unit tests/client
+          -n auto --dist loadfile
+      - name: upload requirement report
+        if: ${{ !cancelled() && matrix.python-version == '3.14' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: req-unit
+          path: .reports/req-unit.json
+          if-no-files-found: error
+
+  integration:
+    # Two shards run in parallel: the rules server tests (real Prefect, Postgres
+    # and Azurite) are about as slow as every other integration test together.
+    name: integration (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: rules
+            paths: tests/integration/rules
+            ignore: ""
+          - shard: server
+            paths: tests/integration
+            ignore: --ignore=tests/integration/rules
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --python 3.12
+      # Docker is available on ubuntu runners, so testcontainers (Postgres,
+      # Azurite) start from the tests themselves.
+      - name: pytest tests/integration
+        run: >-
+          uv run pytest ${{ matrix.paths }} ${{ matrix.ignore }}
+          --req-report=.reports/req-integration-${{ matrix.shard }}.json
+      - name: upload requirement report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: req-integration-${{ matrix.shard }}
+          path: .reports/req-integration-${{ matrix.shard }}.json
+          if-no-files-found: error
+
+  e2e:
+    name: e2e (Docker image, Playwright)
+    runs-on: ubuntu-latest
+    env:
+      HP_E2E_IMAGE: heliopuddle:ci
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --python 3.12
+      - name: docker build
+        run: docker build -f docker/Dockerfile -t "$HP_E2E_IMAGE" .
+      - name: image size
+        run: docker image ls "$HP_E2E_IMAGE"
+      - name: install Playwright Chromium
+        run: uv run playwright install --with-deps chromium
+      - name: pytest tests/e2e
+        run: uv run pytest tests/e2e --req-report=.reports/req-e2e.json
+      - name: upload requirement report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: req-e2e
+          path: .reports/req-e2e.json
+          if-no-files-found: error
+      - name: upload screenshots and container log
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: |
+            .reports/screenshots/
+            .reports/e2e-container.log
+          if-no-files-found: warn
+
+  requirements:
+    # Fails unless every requirement due in the current milestone (pyproject
+    # [tool.heliopuddle] milestone) has a passing test. Runs even when a suite
+    # failed, so the matrix shows what is missing.
+    name: requirement matrix
+    needs: [unit, integration, e2e]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: req-*
+          path: .reports
+          merge-multiple: true
+      - run: ls -l .reports
+      - name: scripts/req_matrix.py
+        run: uv run python scripts/req_matrix.py
+
+  docs:
+    # The user documentation site (docs/site) builds without warnings.
+    name: docs (mkdocs --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv run --only-group docs mkdocs build --strict

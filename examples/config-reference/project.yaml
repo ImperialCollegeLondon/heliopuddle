@@ -1,0 +1,122 @@
+# A reference project file that sets every option once. Real projects need far
+# less: only `project` and one storage location are required. Defaults are
+# listed in docs/site/configuration.md. Any `${VAR}` is read from the
+# environment; `${VAR:-default}` falls back to the default.
+project: reference                       # project name (letters, digits, _ . -)
+
+storage_locations:
+  - name: landing                        # name used by rules and the API
+    url: file://${HP_LANDING_ROOT:-/data/landing}  # fsspec URL of the root
+    storage_options: {}                  # passed straight to fsspec
+    accept_external_changes: true        # tolerate files changed outside hp
+    create_root: auto                    # true | false | auto (not on object stores)
+    quota: 200GB                         # optional cap on indexed size
+  - name: archive
+    url: s3://${HP_ARCHIVE_BUCKET:-example-archive}/reference
+    storage_options:
+      key: ${HP_ARCHIVE_KEY:-example-key}        # secrets come from the environment
+      secret: ${HP_ARCHIVE_SECRET:-example-secret}
+    accept_external_changes: false
+    create_root: false                   # the bucket must already exist
+    quota: 2TiB                          # binary units are allowed
+  - name: scratch
+    url: file:///data/scratch
+
+index:
+  full_schedule: "0 3 * * 0"             # cron: full index, Sundays 03:00
+  incremental_schedule: "*/10 * * * *"   # cron: incremental index every 10 min
+  batch_size: 25                         # listed entries per index_batch task
+  batch:                                 # stop a run after the first limit reached
+    max_files: 5000
+    max_bytes: 50GB
+    max_duration: 1h
+  retrigger: true                        # start a follow-up run while work remains
+  pause_between_runs: 30s                # wait before the follow-up run
+  settle_time: 60s                       # skip files modified more recently
+  reverify_after: 1h                     # repair stale pending/deleting copies
+  lock_timeout: 1h                       # how long a full index waits for the lock
+  incremental_overlap: 5m                # re-check files just before the watermark
+  incremental_lookback: 2d               # days expanded into incremental_prefixes
+  incremental_prefixes:                  # only list these folders incrementally
+    - "science/{date:%Y/%m/%d}"          # strftime placeholder, one folder per day
+
+# --8<-- [start:versioning]
+versioning:                              # the first rule whose paths and pattern match wins
+  - paths: ["calibration/**", "models/**"]   # globs on the relative path
+    version_type: text                   # text versions compare as strings
+    extraction_pattern: '_v(?P<major>\d{1,3})\.(?P<minor>\d{1,4})\.(?P<ext>[^./]+)$'  # regex searched in the file name
+    version_text: '{major:0>3}.{minor:0>4}'  # format over the named groups: v2.12 -> 002.0012
+    ignore_in_series: [ext]              # .csv and .json of one version are one series
+  - paths: ["science/**"]
+    version_type: number                 # the default: an integer version
+    extraction_pattern: '_(?P<date>\d{8})_v(?P<version>\d{1,5})\.[^./]+$'  # `date` also sets the content date
+  - paths: ["**"]                        # everything else
+    extraction_pattern: '_[vV](?P<version>\d{1,5})\.[^./]+$'  # file_v12.csv -> 12
+# --8<-- [end:versioning]
+
+# --8<-- [start:rules]
+rules:
+  - name: archive-superseded             # unique within the project
+    action: move                         # copy | move | delete
+    source: landing                      # storage location to read from
+    destination: archive                 # required for copy and move, not allowed for delete
+    match:
+      paths: ["science/**/*.cdf", "science/**/*.csv"]  # include globs (required)
+      exclude: ["science/**/tmp/**"]     # exclude globs
+      is_latest: false                   # null: all versions, true: latest only, false: all but latest
+      age:                               # every criterion listed must hold
+        modified:                        # source copy mtime
+          older_than: 30d                # a duration back from the run, or an ISO date
+          younger_than: 1y               # both bounds make a range
+        created:                         # when hp first recorded the file
+          older_than: 7d
+        content_date:                    # the file's content date; files without one never match
+          older_than: 2026-01-01         # an absolute date (UTC when no time zone is given)
+          younger_than: 2020-01-01T00:00:00Z
+        arrived:                         # when the file arrived in the source location
+          older_than: 1d                 # cooling-off period before archiving
+    options:
+      overwrite: false                   # replace a different file at the destination
+      check_for_space: true              # check the destination has room first
+      check_for_space_overhead: 2GB      # keep this much free beyond the files
+      update_only_if_newer: true         # differing destination newer than source: skip
+      dry_run: false                     # true: log what would happen, change nothing
+      retrigger: true                    # start a follow-up run while work remains
+      pause_between_runs: 30s            # wait before the follow-up run
+      batch:                             # stop a run after the first limit reached
+        max_files: 100
+        max_bytes: 1GB
+        max_duration: 30m
+    enabled: true                        # false: never runs (can also be toggled at runtime)
+    schedule: "17 2 * * *"               # cron; leave out to run on demand only
+
+  - name: mirror-latest                  # copy keeps the source
+    action: copy
+    source: landing
+    destination: scratch
+    match:
+      paths: ["calibration/**"]
+      is_latest: true
+    options:
+      overwrite: true
+      batch: { max_files: 500 }          # unset limits keep their defaults
+    schedule: "*/30 * * * *"
+
+  - name: purge-scratch                  # delete has no destination
+    action: delete
+    source: scratch
+    match:
+      paths: ["**"]
+      age:
+        arrived: { older_than: 14d }
+    options:
+      dry_run: true                      # try it out before enabling for real
+    enabled: false
+# --8<-- [end:rules]
+
+reconcile:
+  schedule: "30 4 * * *"                 # cron for scheduled reconciles
+  verify: true                           # re-hash available copies on scheduled runs
+  rules: [archive-superseded]            # rules to reconcile; unset means all
+  max_rule_passes: 3                     # passes to reach a fixed point
+  max_failures: 5                        # file failures before a pass stops

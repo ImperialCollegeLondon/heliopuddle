@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ project }} · heliopuddle{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Overview</h1>
+  </div>
+  <a class="btn" href="{{ path_for('ui_files', project=project) }}">Browse files</a>
+</div>
+{{ m.notice(notice) }}
+
+<section class="kpis" aria-label="Key figures">
+  <a class="card kpi" href="{{ path_for('ui_files', project=project) }}"><span class="lbl">Live files</span><span class="kpi-value">{{ summary.files | number }}</span><span class="kpi-sub">{{ summary.deleted_files | number }} deleted</span></a>
+  <a class="card kpi" href="{{ path_for('ui_files', project=project) }}?view=latest"><span class="lbl">Latest files</span><span class="kpi-value">{{ summary.latest_files | number }}</span><span class="kpi-sub">latest of their series</span></a>
+  <div class="card kpi"><span class="lbl">Stored</span><span class="kpi-value">{{ summary.bytes | human_size }}</span><span class="kpi-sub">size of live files</span></div>
+  <a class="card kpi{% if counts.attention %} kpi-alert{% endif %}" href="{{ path_for('ui_files', project=project) }}?view=attention"><span class="lbl">Needs attention</span><span class="kpi-value">{{ counts.attention | number }}</span><span class="kpi-sub">unknown or missing copy</span></a>
+  <a class="card kpi{% if counts.progress %} kpi-busy{% endif %}" href="{{ path_for('ui_files', project=project) }}?view=progress"><span class="lbl">In progress</span><span class="kpi-value">{{ counts.progress | number }}</span><span class="kpi-sub">pending, overwriting or deleting</span></a>
+</section>
+
+<div class="grid-2">
+  <section class="card card-pad heat-card" aria-labelledby="heat-heading">
+    <div class="card-head">
+      <h2 id="heat-heading">Copy states</h2>
+      <span class="muted small">select a cell to open those files</span>
+    </div>
+    <div class="scroll-x">
+    <table class="heatmap">
+      <thead>
+        <tr>
+          <th scope="col" class="hm-name">Storage location</th>
+          {% for s in heat[0] %}<th scope="col">{{ s.label }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for sl, cells in heat[1] %}
+        <tr{% if not sl.active %} class="inactive"{% endif %}>
+          <th scope="row" class="hm-name"><a href="{{ path_for('ui_storage_location', project=project, name=sl.name) }}">{{ sl.name }}</a>{% if not sl.active %} <span class="pill st-none">inactive</span>{% endif %}</th>
+          {% for c in cells %}
+          <td>{% if c.url %}<a class="hm-cell st-{{ c.state }}" href="{{ c.url }}" aria-label="{{ c.count | number }} {{ c.label }} on {{ sl.name }}">{{ c.count | number }}</a>{% elif c.count %}<span class="hm-cell st-{{ c.state }}">{{ c.count | number }}</span>{% else %}<span class="hm-cell hm-zero" aria-label="none">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ heat[0] | length + 1 }}" class="empty">No storage locations.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="card card-pad" aria-labelledby="att-heading">
+    <div class="card-head"><h2 id="att-heading">Needs attention</h2></div>
+    {% if attention %}
+    <ul class="attention">
+      {% for a in attention %}
+      <li>
+        <span class="att-icon st-{{ a.tone }}" aria-hidden="true">{{ state_style(a.state).symbol }}</span>
+        <span class="att-text">
+          <span class="att-title">{{ a.title }}</span>
+          <span class="att-sub">{% if a.state == "unknown" %}content changed outside heliopuddle{% elif a.state == "missing" %}not found by the last index{% else %}work in progress{% endif %}</span>
+        </span>
+        <a class="btn btn-sm" href="{{ a.url }}">{{ "Review" if a.state in ("unknown", "missing") else "View" }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="all-clear"><span class="all-clear-icon">{{ m.icon("check", 18) }}</span><span>Nothing needs attention.</span></div>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="card" aria-labelledby="rules-heading">
+    <div class="card-head card-pad-x">
+      <h2 id="rules-heading">Rules</h2>
+      <a class="small" href="{{ path_for('ui_rules', project=project) }}">All rules →</a>
+    </div>
+    {% if rules %}
+    <div class="scroll-x">
+    <table class="tbl">
+      <thead><tr><th>Rule</th><th>Action</th><th>Schedule</th><th>Enabled</th><th>Last success</th></tr></thead>
+      <tbody>
+        {% for r in rules %}
+        <tr>
+          <td><a class="strong" href="{{ path_for('ui_rules', project=project) }}#rule-{{ r.name }}">{{ r.name }}</a></td>
+          <td><span class="action-pill action-{{ r.action }}">{{ r | rule_route }}</span></td>
+          <td class="nowrap{% if r.schedule %} mono small{% endif %}">{{ r.schedule or "on demand" }}</td>
+          <td>{% if r.effective_enabled %}<span class="pill st-available">enabled</span>{% else %}<span class="pill st-none">disabled</span>{% endif %}</td>
+          <td class="nowrap">{{ m.when(r.last_success_at) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty card-pad">No rules configured.</p>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="recent-heading">
+    <div class="card-head card-pad-x">
+      <h2 id="recent-heading">Recently added</h2>
+      <a class="small" href="{{ path_for('ui_files', project=project) }}">All files →</a>
+    </div>
+    {% if recent %}
+    <ul class="recent">
+      {% for f in recent %}
+      {%- set parts = f.path | split_path -%}
+      <li>
+        <a class="recent-path" href="{{ path_for('ui_files', project=project) }}?file={{ f.id }}" title="{{ f.path }}"><span class="mono recent-name">{{ parts[1] }}</span><span class="mono dir small">{{ parts[0] or "/" }}</span></a>
+        <span class="recent-states">{% for c in f.storage_locations %}{{ m.st(c.state, true) }}{% endfor %}</span>
+        <span class="mono muted small nowrap">{{ f.size | human_size }}</span>
+        <span class="muted small nowrap">{{ m.when(f.created_at) }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty card-pad">No files yet.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

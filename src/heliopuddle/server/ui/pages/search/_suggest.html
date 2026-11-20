@@ -1,0 +1,20 @@
+{% import "_macros.html" as m with context %}
+{% for project_name, items in groups %}
+<div class="lbl suggest-group">{{ project_name }} · {{ results.projects.get(project_name, items | length) | number }} {{ "file" if results.projects.get(project_name, items | length) == 1 else "files" }}</div>
+{% for f in items %}
+{%- set parts = f.path | split_path -%}
+<a class="res" role="option" href="{{ path_for('ui_file_detail', project=f.project, file_id=f.id) }}">
+  <span class="mono res-path"><span class="dir">{{ m.mark(parts[0], words) }}</span>{{ m.mark(parts[1], words) }}</span>
+  {% if f.is_latest %}{{ m.latest_pill() }}{% endif %}
+  {% if f.deleted_at %}<span class="pill pill-deleted">deleted</span>{% endif %}
+  <span class="mono small muted nowrap">{{ f.size | human_size }}</span>
+</a>
+{% endfor %}
+{% else %}
+<div class="suggest-empty">No files match “{{ search_q }}”{% if search_project %} in {{ search_project }}{% endif %}.</div>
+{% endfor %}
+<div class="suggest-foot">
+  <span>Matches file paths{% if search_project %} in {{ search_project }}{% endif %}</span>
+  {% if search_project %}<a href="{{ widen_url }}">Search all projects</a>{% endif %}
+  {% if results.total %}<a href="{{ all_url }}">See all {{ results.total | number }} →</a>{% endif %}
+</div>

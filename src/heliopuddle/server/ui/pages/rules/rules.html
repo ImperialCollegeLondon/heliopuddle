@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Rules · {{ project }} · heliopuddle{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Rules</h1>
+    <span class="sub">How files move between storage locations. Configured in YAML; enabled state and runs are live.</span>
+  </div>
+  {% if can('hp-operator') %}<a class="btn" href="#one-off" data-open="one-off">One-off run…</a>{% endif %}
+</div>
+{{ m.notice(notice) }}
+
+<section class="card flow" aria-labelledby="flow-heading">
+  <h2 id="flow-heading" class="lbl flow-title">Data flow</h2>
+  <ul class="flow-key" aria-label="Line key">
+    <li><span class="key-line edge-copy"></span>copy</li>
+    <li><span class="key-line edge-move"></span>move</li>
+    <li><span class="key-line edge-delete"></span>delete</li>
+    <li><span class="key-line edge-off"></span>disabled</li>
+  </ul>
+  {% include "rules/_rules_flow.html" %}
+  {% if not rules %}<p class="flow-empty muted">No rules yet: storage locations are shown without connections.</p>{% endif %}
+</section>
+
+<section class="card" aria-labelledby="rt-heading">
+  <div class="card-head card-pad-x"><h2 id="rt-heading">Configured rules</h2><span class="muted small">{{ rules | length }} {{ "rule" if rules | length == 1 else "rules" }}</span></div>
+  {% if rules %}
+  <div class="scroll-x rules-scroll">
+  <table class="tbl rules-table">
+    <thead><tr><th>Enabled</th><th>Rule</th><th>Action</th><th>Schedule</th><th>Progress (watermark)</th><th>Last success</th><th class="right">Actions</th></tr></thead>
+    <tbody>
+      {% for rule in rules %}
+      <tr id="rule-{{ rule.name }}" data-rule="{{ rule.name }}">
+        <td>
+          {% if can('hp-operator') %}
+          <form class="inline" method="post" action="{{ path_for('ui_disable_rule' if rule.effective_enabled else 'ui_enable_rule', project=project, name=rule.name) }}">
+            <button class="switch{% if rule.effective_enabled %} on{% endif %}" type="submit" aria-pressed="{{ 'true' if rule.effective_enabled else 'false' }}" aria-label="{{ 'Disable' if rule.effective_enabled else 'Enable' }}" title="{{ 'Disable' if rule.effective_enabled else 'Enable' }} {{ rule.name }}"><span class="knob"></span></button>
+          </form>
+          {% else %}
+          {% if rule.effective_enabled %}<span class="pill st-available">enabled</span>{% else %}<span class="pill st-none">disabled</span>{% endif %}
+          {% endif %}
+          {% if not rule.enabled %}<span class="small muted yaml-off" title="Disabled in YAML: a runtime enable cannot override it">off in YAML</span>{% endif %}
+        </td>
+        <td>
+          <span class="rule-name">{{ rule.name }}</span>
+          <dl class="rule-summary">
+            {% for label, text in rule | rule_summary %}<div><dt>{{ label }}</dt><dd class="mono">{{ text }}</dd></div>{% endfor %}
+          </dl>
+        </td>
+        <td><span class="action-pill action-{{ rule.action }}">{{ rule | rule_route }}</span></td>
+        <td class="nowrap{% if rule.schedule %} mono small{% endif %}">{{ rule.schedule or "on demand" }}</td>
+        <td class="mono small">{% if rule.watermark_at %}{{ rule.watermark_at | datetime }} · file {{ rule.watermark_id }}{% else %}<span class="muted">not yet run</span>{% endif %}</td>
+        <td class="nowrap">{{ m.when(rule.last_success_at) }}</td>
+        <td class="right">
+          <div class="row-actions">
+            {% if can('hp-operator') %}
+            <details class="menu">
+              <summary class="btn btn-sm">Run <span class="caret" aria-hidden="true">▾</span></summary>
+              <form class="menu-panel menu-right stack" method="post" action="{{ path_for('ui_run_rule', project=project, name=rule.name) }}">
+                <label class="field">Mode <select name="mode"><option value="incremental">Incremental</option><option value="full">Full</option></select></label>
+                <label class="check"><input type="checkbox" name="dry_run" value="true"{% if rule.options.dry_run %} checked{% endif %}> Dry run</label>
+                <button class="btn btn-pri btn-sm" type="submit"{% if not rule.effective_enabled %} disabled title="Enable the rule to run it"{% endif %}>Run now</button>
+              </form>
+            </details>
+            {% endif %}
+            <details class="menu">
+              <summary class="btn btn-sm">Config <span class="caret" aria-hidden="true">▾</span></summary>
+              <div class="menu-panel menu-right config-panel">
+                <span class="lbl">Validated configuration (including defaults)</span>
+                <pre class="rule-config">{{ configs[rule.name] | metadata_value }}</pre>
+              </div>
+            </details>
+            {% if deployment_urls[rule.name] %}<a class="btn btn-sm" href="{{ deployment_urls[rule.name] }}" target="_blank" rel="noopener" title="Deployment {{ rule.deployment }} in Prefect">Deployment ↗</a>{% else %}<span class="small muted" title="Deployment">{{ rule.deployment }}</span>{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty card-pad">No configured rules. Add rules in the project's YAML, or run an unsaved specification below.</p>
+  {% endif %}
+</section>
+
+{% if can('hp-operator') %}
+<details class="card oneoff" id="one-off">
+  <summary class="oneoff-summary">
+    <span class="oneoff-title">One-off run</span>
+    <span class="small muted">Run a complete unsaved specification once, in full mode, for exactly one batch.</span>
+    <span class="caret" aria-hidden="true">▾</span>
+  </summary>
+  <div class="oneoff-body">
+    <p class="small muted">Limits apply to the whole run; no successor is scheduled. This never changes the project's YAML or configured rules.</p>
+    <form class="rule-form" id="rule-once" method="post" action="{{ path_for('ui_run_once', project=project) }}" data-confirm="Run this specification once now?">
+      <fieldset>
+        <legend>Action and storage locations</legend>
+        <label class="field">Action <select name="action"><option value="copy">Copy</option><option value="move">Move</option><option value="delete">Delete source copy</option></select></label>
+        <label class="field">Source <select name="source" required>{% for sl in storage_locations %}<option value="{{ sl.name }}">{{ sl.name }}</option>{% endfor %}</select></label>
+        <label class="field">Destination <select name="destination"><option value="">None (delete only)</option>{% for sl in storage_locations %}<option value="{{ sl.name }}">{{ sl.name }}</option>{% endfor %}</select></label>
+      </fieldset>
+      <fieldset>
+        <legend>Match</legend>
+        <label class="field">Include paths (one glob per line) <textarea name="paths" required rows="3" class="mono">{{ match_defaults.paths | join("\n") }}</textarea></label>
+        <label class="field">Exclude paths (one glob per line) <textarea name="exclude" rows="3" class="mono"></textarea></label>
+        <label class="field">Latest <select name="is_latest"><option value="">Any</option><option value="true">Latest only</option><option value="false">Non-latest only</option></select></label>
+      </fieldset>
+      <fieldset>
+        <legend>Age</legend>
+        <p class="small muted">A duration back from the run (<span class="mono">30d</span>, <span class="mono">1y6mo</span>) or a UTC date (<span class="mono">2025-01-01</span>). Blank means no limit; every age given must hold.</p>
+        <div class="age-grid">
+          <span></span><span class="lbl">Older than</span><span class="lbl">Younger than</span>
+          {% for field, label in [("modified", "Modified"), ("created", "Created"), ("content_date", "Content date"), ("arrived", "Arrived")] %}
+          <span class="age-label">{{ label }}</span>
+          <input name="age_{{ field }}_older_than" class="mono" aria-label="{{ label }} older than" placeholder="30d or 2025-06-01">
+          <input name="age_{{ field }}_younger_than" class="mono" aria-label="{{ label }} younger than" placeholder="1y or 2024-01-01">
+          {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Options</legend>
+        <label class="check"><input type="checkbox" name="overwrite" value="true"{% if option_defaults.overwrite %} checked{% endif %}> Overwrite</label>
+        <label class="check"><input type="checkbox" name="check_for_space" value="true"{% if option_defaults.check_for_space %} checked{% endif %}> Check for space</label>
+        <label class="field">Space overhead <input name="check_for_space_overhead" value="{{ option_defaults.check_for_space_overhead }}" placeholder="2GB" required></label>
+        <label class="check"><input type="checkbox" name="update_only_if_newer" value="true"{% if option_defaults.update_only_if_newer %} checked{% endif %}> Update only if newer</label>
+        <label class="check"><input type="checkbox" name="dry_run" value="true"{% if option_defaults.dry_run %} checked{% endif %}> Dry run</label>
+        <label class="check"><input type="checkbox" name="retrigger" value="true"{% if option_defaults.retrigger %} checked{% endif %}> Retrigger (ignored for one-off runs)</label>
+        <label class="field">Pause between runs (ignored for one-off runs) <input name="pause_between_runs" value="{{ option_defaults.pause_between_runs }}" required></label>
+      </fieldset>
+      <fieldset>
+        <legend>Total limits</legend>
+        <p class="small muted">Blank means unlimited; at least one is required.</p>
+        <label class="field">Max files <input name="max_files" type="number" min="1" value="{{ option_defaults.batch.max_files }}"></label>
+        <label class="field">Max bytes <input name="max_bytes" value="{{ option_defaults.batch.max_bytes }}" placeholder="1GB"></label>
+        <label class="field">Max duration <input name="max_duration" value="{{ option_defaults.batch.max_duration }}" placeholder="30m"></label>
+      </fieldset>
+      <div class="form-foot"><button class="btn btn-pri" type="submit">Run once</button></div>
+    </form>
+  </div>
+</details>
+{% endif %}
+{% endblock %}

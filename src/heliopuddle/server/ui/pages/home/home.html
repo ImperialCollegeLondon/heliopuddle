@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Projects · heliopuddle{% endblock %}
+{% block hero %}
+<div class="hero">
+  <h1>Projects</h1>
+  <p>
+    {{- cards | length }} {{ "project" if cards | length == 1 else "projects" }} · {{ totals.files | number }} live files · {{ totals.bytes | human_size }} ·
+    {%- if totals.attention %} {{ totals.attention }} {{ "needs" if totals.attention == 1 else "need" }} attention{% else %} all healthy{% endif -%}
+  </p>
+</div>
+{% endblock %}
+{% block content %}
+{% if cards %}
+<section class="project-grid" aria-label="Projects">
+  {% for c in cards %}
+  <a class="card project-card tone-{{ c.tone or 'none' }}" href="{{ path_for('ui_overview', project=c.name) }}">
+    <span class="project-card-head">
+      <span class="project-name">{{ c.name }}</span>
+      {% if c.summary %}{{ m.tone_pill(c.tone, c.badge) }}{% else %}<span class="pill st-none">summary unavailable</span>{% endif %}
+    </span>
+    {% if c.summary %}
+    <span class="figures">
+      <span class="figure"><span class="lbl">Files</span><span class="figure-value">{{ c.summary.files | number }}</span></span>
+      <span class="figure"><span class="lbl">Stored</span><span class="figure-value">{{ c.summary.bytes | human_size }}</span></span>
+      <span class="figure"><span class="lbl">Latest</span><span class="figure-value">{{ c.summary.latest_files | number }}</span></span>
+    </span>
+    <span class="tags">
+      {% for sl in c.summary.storage_locations %}
+      {%- set bad = sl.states.get("missing", 0) + sl.states.get("unknown", 0) -%}
+      <span class="tag{% if not sl.active %} tag-off{% endif %}"><span class="dot {% if not sl.active %}dot-off{% elif sl.states.get('missing', 0) %}dot-missing{% elif bad %}dot-unknown{% else %}dot-ok{% endif %}" aria-hidden="true"></span>{{ sl.name }}</span>
+      {% endfor %}
+    </span>
+    {% else %}
+    <span class="tags">{% for sl in c.sls %}<span class="tag">{{ sl }}</span>{% endfor %}</span>
+    {% endif %}
+  </a>
+  {% endfor %}
+</section>
+
+<section class="card card-pad attention-card" aria-labelledby="att-heading">
+  <div class="card-head">
+    <h2 id="att-heading">Needs attention</h2>
+    <span class="muted small">unknown and missing copies, across your projects</span>
+  </div>
+  {% if attention %}
+  <ul class="attention">
+    {% for a in attention %}
+    <li>
+      <span class="att-icon st-{{ a.tone }}" aria-hidden="true">{{ state_style(a.state).symbol }}</span>
+      <span class="att-text">
+        <span class="att-title">{{ a.title }}</span>
+        <span class="att-sub">{{ a.project }} · {% if a.state == "unknown" %}content changed outside heliopuddle{% else %}not found by the last index{% endif %}</span>
+      </span>
+      <a class="btn btn-sm" href="{{ a.url }}" aria-label="Review {{ a.title }} in {{ a.project }}">Review</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="all-clear"><span class="all-clear-icon">{{ m.icon("check", 18) }}</span><span>Nothing needs attention. Every copy is where it should be.</span></div>
+  {% endif %}
+</section>
+{% else %}
+<div class="card empty-card">
+  <h2>No projects yet</h2>
+  <p class="empty">No projects are configured. Add a project YAML file to the config directory.</p>
+</div>
+{% endif %}
+{% endblock %}

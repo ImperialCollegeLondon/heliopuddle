@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{% if search_q %}“{{ search_q }}” · {% endif %}Search · heliopuddle{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Search</h1>
+    {% if results %}
+    <span class="sub">{{ results.total | number }} {{ "file matches" if results.total == 1 else "files match" }} “<span class="mono">{{ search_q }}</span>”{% if search_project %} in <strong>{{ search_project }}</strong>{% else %} across your projects{% endif %}</span>
+    {% else %}
+    <span class="sub">Find files by path across every project you can read.</span>
+    {% endif %}
+  </div>
+</div>
+
+<form class="card card-pad search-form" method="get" action="{{ path_for('ui_search') }}">
+  <label class="field grow">Path contains
+    <input type="search" name="q" value="{{ search_q }}" minlength="2" maxlength="200" placeholder="e.g. 2026/11 obs" class="mono" required>
+  </label>
+  <label class="field">Project
+    <select name="project">
+      <option value="">All projects</option>
+      {% for p in projects %}<option value="{{ p }}"{% if p == search_project %} selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="btn btn-pri" type="submit">Search</button>
+</form>
+
+{% if search_q and search_q | length < 2 %}
+<p class="empty">Type at least two characters.</p>
+{% elif results %}
+  {% if search_project %}
+  <p class="widen small">Showing matches in {{ search_project }} only. <a href="{{ widen_url }}">Search all projects →</a></p>
+  {% elif results.projects | length > 1 %}
+  <ul class="scope-chips" aria-label="Matches per project">
+    {% for p, count in results.projects | dictsort %}<li><a class="chip" href="{{ project_url(p) }}">{{ p }} <span class="cnt">{{ count | number }}</span></a></li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% for project_name, items in groups %}
+  <section class="card result-group" aria-labelledby="g-{{ loop.index }}">
+    <div class="card-head card-pad-x">
+      <h2 id="g-{{ loop.index }}"><a href="{{ path_for('ui_overview', project=project_name) }}">{{ project_name }}</a></h2>
+      <span class="muted small">{{ results.projects.get(project_name, items | length) | number }} {{ "match" if results.projects.get(project_name, items | length) == 1 else "matches" }}</span>
+    </div>
+    <ul class="results">
+      {% for f in items %}
+      {%- set parts = f.path | split_path -%}
+      <li>
+        <a class="res" href="{{ path_for('ui_file_detail', project=f.project, file_id=f.id) }}">
+          <span class="mono res-path"><span class="dir">{{ m.mark(parts[0], words) }}</span>{{ m.mark(parts[1], words) }}</span>
+          <span class="res-states">{% for c in f.storage_locations %}{{ m.st(c.state, true) }}{% endfor %}</span>
+          {% if f.is_latest %}{{ m.latest_pill() }}{% endif %}
+          {% if f.deleted_at %}<span class="pill pill-deleted">deleted</span>{% endif %}
+          <span class="mono small muted nowrap">{{ f | version_label }}</span>
+          <span class="mono small muted nowrap res-size">{{ f.size | human_size }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% else %}
+  <div class="card empty-card"><p class="empty">No files match “{{ search_q }}”.</p>{% if search_project %}<a class="btn btn-sm" href="{{ widen_url }}">Search all projects</a>{% endif %}</div>
+  {% endfor %}
+  {% if results.total %}
+  <nav class="pager pager-center" aria-label="Pages">
+    <span class="muted small">{{ first | number }}–{{ last | number }} of {{ results.total | number }}</span>
+    {% if prev_url %}<a class="btn btn-sm" rel="prev" href="{{ prev_url }}">← Previous</a>{% endif %}
+    {% if next_url %}<a class="btn btn-sm" rel="next" href="{{ next_url }}">Next →</a>{% endif %}
+  </nav>
+  {% endif %}
+{% endif %}
+{% endblock %}

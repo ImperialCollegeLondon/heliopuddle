@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ item.read.name }} · Storage · {{ project }} · heliopuddle{% endblock %}
+{% block content %}
+{%- set sl = item.read -%}
+{%- set s = item.summary -%}
+<div class="split">
+  <nav class="slnav" aria-label="Storage locations">
+    <span class="lbl">Storage locations</span>
+    {% for i in items %}
+    <a href="{{ path_for('ui_storage_location', project=project, name=i.read.name) }}"{% if i.read.name == sl.name %} aria-current="page"{% endif %}>
+      <span class="kind kind-{{ loop.index0 % 4 }}" aria-hidden="true">{{ (i.kind or "—")[:4] }}</span>
+      <span class="slnav-text">
+        <span class="strong">{{ i.read.name }}</span>
+        <span class="small muted">{% if not i.read.active %}inactive{% elif i.summary %}{{ i.summary.files | number }} · {{ i.summary.bytes | human_size }}{% endif %}</span>
+      </span>
+      {%- set bad = i.summary.states.get('missing', 0) if i.summary else 0 -%}
+      {%- set unk = i.summary.states.get('unknown', 0) if i.summary else 0 -%}
+      <span class="dot {% if not i.read.active %}dot-off{% elif bad %}dot-missing{% elif unk %}dot-unknown{% else %}dot-ok{% endif %}" aria-hidden="true"></span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="split-main">
+    <div class="page-head">
+      <div class="page-title">
+        <h1>{{ sl.name }} {% if not sl.active %}<span class="pill st-none">inactive</span>{% endif %}</h1>
+        <span class="mono sub sl-url">{{ sl.url or "Restricted" }}</span>
+      </div>
+      <div class="head-actions">
+        <a class="btn" href="{{ files_url }}">Browse files</a>
+        {% if sl.active and can('hp-operator') %}
+        <form class="inline" method="post" action="{{ path_for('ui_index_now', project=project, storage_location=sl.name) }}">
+          <button class="btn" type="submit" name="mode" value="full">Index · full</button>
+          <button class="btn btn-pri" type="submit" name="mode" value="incremental">Index · incremental</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {{ m.notice(notice) }}
+
+    {% if s %}
+    {%- set busy = s.states.get('pending', 0) + s.states.get('overwriting', 0) + s.states.get('deleting', 0) -%}
+    {%- set bad = s.states.get('missing', 0) + s.states.get('unknown', 0) -%}
+    <section class="kpis kpis-4" aria-label="Key figures">
+      <div class="card kpi"><span class="lbl">Files</span><span class="kpi-value">{{ s.files | number }}</span><span class="kpi-sub">live files with a copy here</span></div>
+      <div class="card kpi"><span class="lbl">Stored</span><span class="kpi-value">{{ s.bytes | human_size }}</span><span class="kpi-sub">{% if sl.quota %}of {{ sl.quota | human_size }} quota{% else %}no quota set{% endif %}</span></div>
+      <div class="card kpi{% if busy %} kpi-busy{% endif %}"><span class="lbl">In progress</span><span class="kpi-value">{{ busy | number }}</span><span class="kpi-sub">pending, overwriting or deleting</span></div>
+      <div class="card kpi{% if bad %} kpi-alert{% endif %}"><span class="lbl">Needs attention</span><span class="kpi-value">{{ bad | number }}</span><span class="kpi-sub">unknown or missing</span></div>
+    </section>
+
+    <section class="card card-pad" aria-labelledby="cs-heading">
+      <div class="card-head"><h2 id="cs-heading">Copy states</h2><span class="muted small">of the project's {{ summary.files | number }} live files</span></div>
+      <div class="segbar segbar-lg">
+        {% for c in item.bar %}{% if c.count %}{% if c.url %}<a class="seg seg-{{ c.state }}" style="width: {{ c.share }}%" href="{{ c.url }}" title="{{ c.count | number }} {{ c.label }}" aria-label="{{ c.count | number }} {{ c.label }}"></a>{% else %}<span class="seg seg-{{ c.state }}" style="width: {{ c.share }}%" title="{{ c.count | number }} {{ c.label }}"></span>{% endif %}{% endif %}{% endfor %}
+      </div>
+      <ul class="seg-legend">
+        {% for c in item.bar %}
+        {% if c.count %}
+        <li>{% if c.url %}<a href="{{ c.url }}">{% endif %}<span class="swatch seg-{{ c.state }}" aria-hidden="true"></span>{{ c.label }} <b class="mono">{{ c.count | number }}</b>{% if c.url %}</a>{% endif %}</li>
+        {% endif %}
+        {% endfor %}
+        {%- set zeros = item.bar | selectattr("count", "equalto", 0) | map(attribute="label") | list -%}
+        {% if zeros %}<li class="muted">{{ zeros | join(" 0 · ") }} 0</li>{% endif %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <div class="grid-2 grid-even">
+      <section class="card card-pad" aria-labelledby="cfg-heading">
+        <div class="card-head"><h2 id="cfg-heading">Configuration <span class="muted small normal">· from YAML, read-only</span></h2></div>
+        <dl class="kv">
+          <dt>Status</dt><dd>{% if sl.active %}<span class="pill st-available">active</span>{% else %}<span class="pill st-none">inactive</span>{% endif %}</dd>
+          <dt>Backend</dt><dd class="mono">{{ item.kind | lower or "Restricted" }}</dd>
+          <dt>URL</dt><dd class="mono wrap sl-url">{{ sl.url or "Restricted" }}</dd>
+          <dt>External changes</dt><dd>{% if sl.accept_external_changes %}accepted{% else %}not accepted · recorded as unknown{% endif %}</dd>
+          <dt>Create root</dt><dd class="mono">{{ sl.create_root | lower }}</dd>
+          <dt>Quota</dt><dd>{{ sl.quota | human_size if sl.quota else "none" }}</dd>
+          <dt>Last full index</dt><dd>{% if sl.last_full_index_at %}{{ sl.last_full_index_at | datetime }} <span class="muted">· {{ sl.last_full_index_at | ago }}</span>{% else %}<span class="muted">never</span>{% endif %}</dd>
+          <dt>Last incremental</dt><dd>{% if sl.last_incremental_index_at %}{{ sl.last_incremental_index_at | datetime }} <span class="muted">· {{ sl.last_incremental_index_at | ago }}</span>{% else %}<span class="muted">never</span>{% endif %}</dd>
+        </dl>
+      </section>
+
+      <section class="card card-pad" aria-labelledby="rl-heading">
+        <div class="card-head"><h2 id="rl-heading">Rules touching {{ sl.name }}</h2></div>
+        {% if touching %}
+        <ul class="touch">
+          {% for t in touching %}
+          <li>
+            <span class="dir-pill dir-{{ t.direction }}">{{ t.direction | upper }}</span>
+            <span class="touch-text">
+              <a class="strong" href="{{ path_for('ui_rules', project=project) }}#rule-{{ t.rule.name }}">{{ t.rule.name }}</a>
+              <span class="mono small muted">{{ t.rule | rule_route }} · {{ t.rule | rule_match }}</span>
+            </span>
+            <span class="small muted nowrap">{{ t.rule.schedule or "on demand" }} · {{ "on" if t.rule.effective_enabled else "off" }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No rule reads from or writes to {{ sl.name }}.</p>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

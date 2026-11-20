@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# heliopuddle
+.reports/
+.heliopuddle/
+.claude/worktrees/
+
+# Local container settings (may hold secrets); docker/heliopuddle.env.example is the template.
+docker/heliopuddle.env
+
+# MkDocs build output
+/site/

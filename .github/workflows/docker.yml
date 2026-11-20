@@ -1,0 +1,198 @@
+name: Docker image
+
+# Publishes the heliopuddle image (DEP-16, docs/design/deployment.md) to the
+# GitHub container registry, ghcr.io/<owner>/<repo>, always; and also to Docker
+# Hub when the repository variable DOCKERHUB_REPOSITORY is set.
+#
+# - Push a tag vX.Y.Z (matching pyproject's version): X.Y.Z, X.Y, X (from 1.0),
+#   and latest (not for pre-releases such as v1.2.0-rc1).
+# - Push to main: main.
+# - Pull request to main: pr-<number> and pr-<number>-<sha> (the PR's head
+#   commit), on ghcr.io only and amd64 only, updated on every push to the PR.
+#   A PR from a fork is built and smoke-tested but not pushed (its
+#   GITHUB_TOKEN cannot write packages).
+# - Run manually (Actions > Docker image > Run workflow, on any branch):
+#   dev-<branch>-<yyyymmdd>-<sha> and dev-<branch> only, so manual development
+#   builds never move latest, main or a version tag.
+#
+# ghcr.io needs no setup: the workflow's GITHUB_TOKEN publishes the package,
+# which is linked to this repository. The optional repository variable
+# GHCR_REPOSITORY changes its name (default: this repository's owner/name).
+#
+# Docker Hub (opt in): set the repository variable DOCKERHUB_REPOSITORY (e.g.
+# myorg/heliopuddle) and the secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (an
+# access token with read/write scope). Every build then goes to both registries
+# with the same tags (pull request images stay on ghcr.io).
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      suffix:
+        description: "Optional extra label appended to the dev tags (letters, digits, . _ -)"
+        required: false
+        default: ""
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_REPOSITORY: ${{ vars.GHCR_REPOSITORY || github.repository }}
+  DOCKERHUB_REPOSITORY: ${{ vars.DOCKERHUB_REPOSITORY }}
+  # Push unless this is a pull request from a fork.
+  PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+  # Docker Hub gets release, main and manual builds, never pull requests.
+  DOCKERHUB: ${{ vars.DOCKERHUB_REPOSITORY != '' && github.event_name != 'pull_request' }}
+
+jobs:
+  image:
+    name: build, smoke test and push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: image names
+        id: names
+        run: |
+          # ghcr.io names must be lowercase; GitHub owners may have capitals.
+          echo "ghcr=ghcr.io/${GHCR_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "dockerhub=docker.io/${DOCKERHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: check Docker Hub credentials
+        if: env.DOCKERHUB == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::DOCKERHUB_REPOSITORY is set: also set the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets."
+            exit 1
+          fi
+
+      - name: check the tag matches the package version
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        run: |
+          package=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$package" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pyproject version $package."
+            exit 1
+          fi
+
+      - name: dev tag parts
+        id: dev
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SUFFIX: ${{ inputs.suffix }}
+        run: |
+          slug=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-' '-' | cut -c1-40 | sed 's/-*$//')
+          suffix=$(printf '%s' "$SUFFIX" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-' '-' | cut -c1-30 | sed 's/-*$//')
+          if [ -n "$suffix" ]; then slug="$slug-$suffix"; fi
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          echo "stamp=$(date -u +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: pull request tag parts
+        id: pr
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "sha=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            name=${{ steps.names.outputs.ghcr }}
+            name=${{ steps.names.outputs.dockerhub }},enable=${{ env.DOCKERHUB == 'true' }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+            type=semver,pattern={{major}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' && !startsWith(github.ref_name, 'v0.') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=raw,value=main,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=dev-${{ steps.dev.outputs.slug }}-${{ steps.dev.outputs.stamp }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=dev-${{ steps.dev.outputs.slug }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=pr-${{ github.event.pull_request.number }},enable=${{ github.event_name == 'pull_request' }}
+            type=raw,value=pr-${{ github.event.pull_request.number }}-${{ steps.pr.outputs.sha }},enable=${{ github.event_name == 'pull_request' }}
+          labels: |
+            org.opencontainers.image.title=heliopuddle
+            org.opencontainers.image.description=File store with versioning, rules and a web UI, backed by Prefect
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: build for the smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: heliopuddle:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: no test tooling or test files in the image
+        run: docker run --rm -i --entrypoint python heliopuddle:smoke - < docker/image_checks.py
+
+      - name: smoke test (zero-config start, SQLite, embedded Prefect)
+        run: |
+          docker run -d --name hp-smoke -p 8080:8080 heliopuddle:smoke
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/api/v1/health; then echo; break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/api/v1/health
+          docker inspect --format '{{.State.Health.Status}}' hp-smoke || true
+          docker logs hp-smoke 2>&1 | tail -n 20
+          docker rm -f hp-smoke
+
+      - name: log in to ghcr.io
+        uses: docker/login-action@v3
+        if: env.PUSH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: log in to Docker Hub
+        uses: docker/login-action@v3
+        if: env.PUSH == 'true' && env.DOCKERHUB == 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: build and push
+        uses: docker/build-push-action@v6
+        if: env.PUSH == 'true'
+        with:
+          context: .
+          file: docker/Dockerfile
+          # Pull request images are for trying a change out: amd64 is enough
+          # and skips the slow emulated arm64 build.
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: summary
+        if: env.PUSH == 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          echo "### Pushed" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$TAGS" | sed 's/^/- `/; s/$/`/' >> "$GITHUB_STEP_SUMMARY"

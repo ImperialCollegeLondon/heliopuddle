@@ -1,0 +1,96 @@
+{% import "_macros.html" as m with context %}
+{%- set f = inspector.file -%}
+{%- set parts = f.path | split_path -%}
+{%- set health = f | health -%}
+<div class="insp" data-file="{{ f.id }}">
+  <div class="insp-head">
+    <div class="pills">
+      {% if f.is_latest %}{{ m.latest_pill() }}{% endif %}
+      {% if f.deleted_at %}<span class="pill pill-deleted">deleted</span>{% else %}{{ m.state_pill(health[1] if health[1] != "none" else none, health[0]) }}{% endif %}
+      {% if not f.deleted_at and f is not latest_eligible %}<span class="pill pill-ineligible" title="No pending or available copy">not latest-eligible</span>{% endif %}
+      {% if f.ignored_from_all_rules %}<span class="pill pill-ignored">ignored by rules</span>{% endif %}
+    </div>
+    {% if close_url %}<a class="insp-close" href="{{ close_url }}" data-close aria-label="Close the inspector">{{ m.icon("close", 16) }}</a>{% endif %}
+    <h2 class="insp-name mono">{{ parts[1] }}</h2>
+    {% if parts[0] %}<span class="insp-dir mono">{{ parts[0] }}</span>{% endif %}
+  </div>
+
+  <div class="insp-actions">
+    {% if f is downloadable %}<a class="btn btn-sm" href="{{ path_for('ui_download', project=project, file_id=f.id) }}" download>{{ m.icon("download", 14) }} Download</a>{% endif %}
+    {% if f is downloadable %}<a class="btn btn-sm" href="{{ path_for('ui_file_detail', project=project, file_id=f.id) }}#preview">Preview</a>{% endif %}
+    <a class="btn btn-sm" href="{{ path_for('ui_file_detail', project=project, file_id=f.id) }}">Open page →</a>
+    {% if not f.deleted_at and can('hp-writer') %}
+    <form class="inline" method="post" action="{{ path_for('ui_rules_ignore', project=project, file_id=f.id) }}">
+      <input type="hidden" name="ignored" value="{{ 'false' if f.ignored_from_all_rules else 'true' }}">
+      <input type="hidden" name="return_to" value="files">
+      <input type="hidden" name="return_query" value="{{ here_query }}">
+      <button class="btn btn-sm" type="submit">{{ 'Include in rules' if f.ignored_from_all_rules else 'Ignore from all rules' }}</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <section class="insp-section" aria-label="Copies">
+    <h3 class="lbl">Copies</h3>
+    {% for c in f.storage_locations %}
+    <div class="copy-card">
+      {{ m.st(c.state) }}
+      <span class="copy-sl">{{ c.storage_location }}</span>
+      <span class="copy-state">{{ c.state.value }}</span>
+      <span class="copy-seen">{% if c.last_seen_at %}seen {{ c.last_seen_at | ago }}{% endif %}</span>
+      {% if c.state.value == "unknown" and not f.deleted_at and can('hp-writer') %}
+      <form class="inline" method="post" action="{{ path_for('ui_accept_file', project=project, file_id=f.id) }}">
+        <input type="hidden" name="storage_location" value="{{ c.storage_location }}">
+        <input type="hidden" name="return_to" value="files">
+        <input type="hidden" name="return_query" value="{{ here_query }}">
+        <button class="btn btn-xs" type="submit" title="Take this copy's current content as the file's accepted content">Accept as is</button>
+      </form>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="muted small">No copies.</p>
+    {% endfor %}
+  </section>
+
+  <section class="insp-section" aria-label="Details">
+    <h3 class="lbl">Details</h3>
+    <dl class="kv">
+      <dt>Size</dt><dd class="mono" title="{{ f.size }} bytes">{{ f.size | human_size }}</dd>
+      <dt>Version</dt><dd class="mono">{{ f | version_label }}</dd>
+      <dt>Hash</dt><dd class="mono" title="{{ f.hash }}">{{ f.hash[:10] }}{% if f.hash | length > 16 %}…{{ f.hash[-6:] }}{% else %}{{ f.hash[10:] }}{% endif %} <span class="muted">{{ f.hash_algo }}</span></dd>
+      <dt>Content date</dt><dd class="mono">{{ f.content_date | date if f.content_date else "—" }}</dd>
+      <dt>Created</dt><dd><span title="{{ f.created_at | datetime }}">{{ f.created_at | ago }}</span>{% if f.created_by %} · {{ f.created_by }}{% endif %}</dd>
+      <dt>Updated</dt><dd><span title="{{ f.updated_at | datetime }}">{{ f.updated_at | ago }}</span>{% if f.updated_by %} · {{ f.updated_by }}{% endif %}</dd>
+      {% if f.deleted_at %}<dt>Deleted</dt><dd title="{{ f.deleted_at | datetime }}">{{ f.deleted_at | ago }}</dd>{% endif %}
+      <dt>Rules</dt><dd>{{ "Ignored from all rules" if f.ignored_from_all_rules else "Included in rules" }}</dd>
+    </dl>
+  </section>
+
+  <section class="insp-section" aria-label="Version history">
+    <h3 class="lbl">Version history</h3>
+    <ol class="timeline">
+      {% for v in inspector.versions %}
+      <li class="{% if v.id == f.id %}current{% endif %}{% if v.deleted_at %} gone{% endif %}"{% if v.id == f.id %} aria-current="true"{% endif %}>
+        <span class="tl-dot" aria-hidden="true"></span>
+        {% if v.id == f.id %}<span class="mono strong">{{ v | version_label }}</span>
+        {% elif v.deleted_at %}<a class="mono tl-gone" href="{{ path_for('ui_file_detail', project=project, file_id=v.id) }}" data-inspect="{{ path_for('ui_inspector', project=project, file_id=v.id) }}">{{ v | version_label }}</a>
+        {% else %}<a class="mono" href="{{ path_for('ui_file_detail', project=project, file_id=v.id) }}" data-inspect="{{ path_for('ui_inspector', project=project, file_id=v.id) }}">{{ v | version_label }}</a>{% endif %}
+        <span class="tl-meta">{% if v.id == f.id %}· this file {% endif %}{% if v.deleted_at %}· deleted {{ v.deleted_at | ago }}{% else %}· {{ v.created_at | ago }}{% endif %}</span>
+        {% if v.is_latest %}{{ m.latest_pill() }}{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section class="insp-section" aria-label="Metadata">
+    <h3 class="lbl">Metadata</h3>
+    {% if f.metadata %}
+    <dl class="kv kv-mono">
+      {% for key, value in f.metadata | dictsort %}
+      <dt>{{ key }}</dt><dd>{% if value is string %}{{ value }}{% else %}<pre>{{ value | metadata_value }}</pre>{% endif %}</dd>
+      {% endfor %}
+    </dl>
+    {% else %}
+    <p class="muted small">No metadata.</p>
+    {% endif %}
+  </section>
+</div>

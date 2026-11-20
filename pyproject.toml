@@ -1,0 +1,198 @@
+[project]
+name = "heliopuddle"
+version = "0.1.0"
+description = "A multi-location datastore manager built on Prefect"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+
+# The /default install is the client only `pip install heliopuddle`
+# pulls just `heliopuddle.client` and `heliopuddle.testing` 
+# for client apps to use the API/CLI
+
+dependencies = [
+    "fsspec>=2023.1.0",
+    "httpx>=0.24.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+
+# The server optional extra is the UI and API installation `heliopuddle server start`
+server = [
+    "alembic>=1.20.1",
+    "cdflib>=1.3.16",
+    "crump>=0.8.0",
+    "fastapi>=0.150.0",
+    "ijson>=3.6.0",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
+    "markdown-it-py>=4.3.0",
+    "prefect>=3.9.3,<4",
+    "psycopg[binary]>=3.3.9",
+    "pwdlib[argon2]>=0.4.2",
+    "pyarrow>=26.0.1",
+    "pyjwt[crypto]>=2.15.1",
+    # A current SQLite bundled in the wheel; only where wheels exist (elsewhere
+    # hp uses the system sqlite3; docs/design/deployment.md).
+    "pysqlite3>=0.6.2; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'darwin' and platform_machine == 'arm64') or sys_platform == 'win32'",
+    "python-multipart>=0.0.34",
+    "sqlalchemy>=2.1.9",
+    "heliopuddle[cli]",
+    "uvicorn>=0.54.0",
+]
+
+# The CLI optional extra is command line tooling `heliopuddle file add ...`
+cli = ["typer>=0.13.0"]
+
+# Optional fsspec backends or `all`; the Docker image installs `all`
+s3 = ["s3fs>=2026.9.0"]
+azure = ["adlfs>=2026.8.0"]
+gcs = ["gcsfs>=2026.10.1"]
+sftp = ["paramiko>=5.1.0"]
+smb = ["smbprotocol>=1.17.0"]
+all = ["heliopuddle[server,cli,s3,azure,gcs,sftp,smb]"]
+
+[project.scripts]
+heliopuddle = "heliopuddle.cli:app"
+
+# The test harness's fixtures (heliopuddle_fake, heliopuddle_store) in any
+# project that installs heliopuddle (CLI-14).
+[project.entry-points.pytest11]
+heliopuddle = "heliopuddle.pytest_plugin"
+
+[dependency-groups]
+docs = ["mkdocs-material>=9.5.0"]
+dev = [
+    "heliopuddle[all]",
+    "import-linter>=2.17",
+    "playwright>=1.65.2",
+    "pre-commit>=4.7.0",
+    "pylint>=4.1.4",
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.17.5",
+    "testcontainers>=4.15.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/heliopuddle"]
+
+[tool.heliopuddle]
+# The milestone being built; scripts/req_matrix.py requires every requirement
+# due in this milestone (or earlier) to have a passing test.
+milestone = "M6"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/client"]
+# Every run (local and CI) reports the slowest tests; see CLAUDE.md "slow".
+addopts = ["--durations=25", "--durations-min=1.0"]
+markers = [
+    "req(id): the requirement ID(s) this test verifies (see docs/spec/requirements)",
+    "slow: takes over 20s; excluded from fast feedback loops with -m 'not slow'",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning:prefect.*",
+    # The case-insensitive unique index on user.username is expression-based;
+    # SQLite cannot reflect it, so alembic skips it when comparing (the initial migration).
+    "ignore:autogenerate skipping metadata-specified expression-based index:UserWarning",
+    "ignore:Skipped unsupported reflection of expression-based index:sqlalchemy.exc.SAWarning",
+]
+
+[tool.coverage.run]
+source = ["heliopuddle"]
+branch = true
+# The pytest plugin is loaded (entry point) before coverage starts measuring.
+omit = [
+    "src/heliopuddle/server/database/migrations/*",
+    "src/heliopuddle/pytest_plugin.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "C90"]
+
+[tool.ruff.lint.mccabe]
+# Cyclomatic complexity gate (C901); split functions that exceed it.
+max-complexity = 12
+
+[tool.pylint.main]
+# Only the duplicate-code checker is used: `uv run pylint src` (CI "quality").
+disable = ["all"]
+enable = ["duplicate-code"]
+
+[tool.pylint.similarities]
+min-similarity-lines = 8
+ignore-imports = true
+ignore-signatures = true
+ignore-docstrings = true
+ignore-comments = true
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+
+[tool.importlinter]
+root_packages = ["heliopuddle"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Client never touches the database (CLI-04)"
+type = "forbidden"
+source_modules = ["heliopuddle.client"]
+forbidden_modules = ["heliopuddle.server.database", "heliopuddle.server.models", "sqlalchemy"]
+
+[[tool.importlinter.contracts]]
+name = "User CLI never touches the database (AUTH-14)"
+type = "forbidden"
+source_modules = ["heliopuddle.cli_user"]
+forbidden_modules = [
+    "heliopuddle.cli",
+    "heliopuddle.server.context",
+    "heliopuddle.server.database",
+    "heliopuddle.server.models",
+    "sqlalchemy",
+]
+
+[[tool.importlinter.contracts]]
+name = "File CLI and test harness never touch the database (CLI-14, CLI-15)"
+type = "forbidden"
+source_modules = ["heliopuddle.cli_file", "heliopuddle.testing"]
+forbidden_modules = [
+    "heliopuddle.cli",
+    "heliopuddle.server.context",
+    "heliopuddle.server.database",
+    "heliopuddle.server.models",
+    "sqlalchemy",
+]
+
+[[tool.importlinter.contracts]]
+name = "UI reads only through the client (UI-05)"
+type = "forbidden"
+source_modules = ["heliopuddle.server.ui"]
+forbidden_modules = [
+    "heliopuddle.server.context",
+    "heliopuddle.server.database",
+    "heliopuddle.server.models",
+    "sqlalchemy",
+]

@@ -1,0 +1,25 @@
+site_name: heliopuddle
+site_description: A catalogue for a file store or datalake, with a web UI, CLI and Python client.
+site_url: https://ImperialCollegeLondon.github.io/heliopuddle/
+repo_url: https://github.com/ImperialCollegeLondon/heliopuddle
+docs_dir: docs/site
+strict: true
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Quick start: quick-start.md
+  - Configuration: configuration.md
+  - Docker: docker.md
+  - Keycloak: keycloak.md
+  - Environment variables: environment.md
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      check_paths: true

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Log in · heliopuddle{% endblock %}
+{% block body_class %}login-page{% endblock %}
+{% block content %}
+<section class="card login-card" aria-labelledby="login-heading">
+  <h1 id="login-heading">Log in</h1>
+  <p class="muted small">Sign in to browse and manage your projects' files.</p>
+  {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+  {% if message %}<p class="error alert" role="alert">{{ message }}</p>{% endif %}
+  {% if mode == "local" %}
+  <form class="stack login-form" method="post" action="{{ path_for('ui_login_submit') }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="field">Username
+      <input type="text" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+    </label>
+    <label class="field">Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn btn-pri btn-lg" type="submit">Log in</button>
+  </form>
+  {% else %}
+  <p><a class="btn btn-pri btn-lg" href="{{ path_for('ui_login') }}{% if next != '/' %}?next={{ next | urlencode }}{% endif %}">Log in with single sign-on</a></p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,161 @@
+{
+  "realm": "heliopuddle",
+  "displayName": "heliopuddle (DEMO realm, not for production)",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "hp-admin",
+        "description": "heliopuddle: everything, and user management (global only)"
+      },
+      {
+        "name": "hp-reader",
+        "description": "heliopuddle: read access except backend credentials, and POST files/check"
+      },
+      {
+        "name": "hp-writer",
+        "description": "heliopuddle: register, uploads, metadata and rules-ignore changes, accept; plus read"
+      },
+      {
+        "name": "hp-deleter",
+        "description": "heliopuddle: DELETE /files/{id}; plus read"
+      },
+      {
+        "name": "hp-operator",
+        "description": "heliopuddle: POST runs, rule enable, disable and trigger; plus read"
+      },
+      {
+        "name": "hp-client-storage-read-write",
+        "description": "heliopuddle: backing-storage credentials and API read; no API write, delete, operator or user management"
+      },
+      {
+        "name": "hp-reader:demo",
+        "description": "heliopuddle: read access to project demo only"
+      },
+      {
+        "name": "hp-writer:demo",
+        "description": "heliopuddle: write access (and read) to project demo only"
+      },
+      {
+        "name": "hp-client-storage-read-write:demo",
+        "description": "heliopuddle: project demo backing-storage credentials and API read only"
+      },
+      {
+        "name": "hp-contributor",
+        "description": "heliopuddle bundle: hp-reader + hp-writer (a composite role)",
+        "composite": true,
+        "composites": {
+          "realm": ["hp-reader", "hp-writer"]
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "heliopuddle",
+      "name": "heliopuddle",
+      "description": "Confidential client for the heliopuddle API and UI. The secret below is a DEMO value.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "demo-only-client-secret-change-me",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "fullScopeAllowed": true,
+      "rootUrl": "http://localhost:8080",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://127.0.0.1:8080/*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8080/*##http://127.0.0.1:8080/*",
+        "access.token.lifespan": "300"
+      },
+      "protocolMappers": [
+        {
+          "name": "heliopuddle-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "heliopuddle",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-heliopuddle",
+      "enabled": true,
+      "serviceAccountClientId": "heliopuddle",
+      "realmRoles": ["hp-reader"]
+    },
+    {
+      "username": "admin-demo",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Demo",
+      "email": "admin-demo@example.test",
+      "credentials": [
+        {"type": "password", "value": "demo-password", "temporary": false}
+      ],
+      "realmRoles": ["hp-admin"]
+    },
+    {
+      "username": "reader-demo",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Reader",
+      "lastName": "Demo",
+      "email": "reader-demo@example.test",
+      "credentials": [
+        {"type": "password", "value": "demo-password", "temporary": false}
+      ],
+      "realmRoles": ["hp-reader"]
+    },
+    {
+      "username": "writer-demo",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Writer",
+      "lastName": "Demo",
+      "email": "writer-demo@example.test",
+      "credentials": [
+        {"type": "password", "value": "demo-password", "temporary": false}
+      ],
+      "realmRoles": ["hp-contributor"]
+    },
+    {
+      "username": "demo-only",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "Only",
+      "email": "demo-only@example.test",
+      "credentials": [
+        {"type": "password", "value": "demo-password", "temporary": false}
+      ],
+      "realmRoles": ["hp-writer:demo"]
+    }
+  ]
+}

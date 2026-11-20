@@ -1,0 +1,28 @@
+{# The data-flow diagram, laid out on the server by views.layout_flow (no JavaScript). #}
+<div class="flow-scroll">
+  <div class="flow-canvas" style="width: {{ flow.width }}px; height: {{ flow.height }}px">
+    <svg class="flow-svg" width="{{ flow.width }}" height="{{ flow.height }}" viewBox="0 0 {{ flow.width }} {{ flow.height }}" aria-hidden="true" focusable="false">
+      <defs>
+        {% for key in ("copy", "move", "delete", "off") %}
+        <marker id="arrow-{{ key }}" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" class="arrow arrow-{{ key }}"/>
+        </marker>
+        {% endfor %}
+      </defs>
+      {% for e in flow.edges %}
+      {%- set key = e.action if e.enabled else "off" -%}
+      <path d="{{ e.path }}" class="edge edge-{{ key }}"{% if e.action != "delete" or e.enabled %} marker-end="url(#arrow-{{ key }})"{% endif %}/>
+      {% endfor %}
+    </svg>
+    {% for n in flow.nodes %}
+    <a class="node{% if n.role %} node-{{ n.role }}{% endif %}" href="{{ path_for('ui_storage_location', project=project, name=n.name) }}" style="left: {{ n.x }}px; top: {{ n.y }}px">
+      <span class="lbl node-kind">{{ n.kind or "storage" }}{% if n.role == "source" %} · source{% elif n.role == "inactive" %} · inactive{% endif %}</span>
+      <span class="node-name">{{ n.name }}</span>
+      <span class="node-stats mono">{% if n.files is not none %}{{ n.files | number }} files · {{ n.bytes | human_size }}{% endif %}</span>
+    </a>
+    {% endfor %}
+    {% for l in flow.labels %}
+    <a class="flow-label flow-{{ l.action if l.enabled else 'off' }}" href="#rule-{{ l.rule }}" style="left: {{ l.x }}px; top: {{ l.y }}px">{{ l.text }}</a>
+    {% endfor %}
+  </div>
+</div>
