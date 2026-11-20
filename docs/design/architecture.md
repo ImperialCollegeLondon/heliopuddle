@@ -191,7 +191,10 @@ handling and `StartupError` are in `server/serving.py`) runs, in one process:
    thread waits for a signal.
 6. On SIGTERM/SIGINT: stop uvicorn, the served deployments, then the embedded
    Prefect server, and exit 0 (a second SIGINT forces uvicorn to stop at
-   once). If the served deployments stop on their own, the process exits 1.
+   once). On POSIX, the embedded server's process group receives SIGTERM, then
+   SIGKILL after a timeout; on Windows, its child process is terminated using
+   `Popen.terminate()` (with `Popen.kill()` as the timeout fallback). If the
+   served deployments stop on their own, the process exits 1.
 
 ## Queueing and concurrency
 
