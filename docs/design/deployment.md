@@ -124,17 +124,19 @@ server must have access to each other's newly created directories and files.
 Use a shared service account or provision shared group permissions; hp does not
 relax backend filesystem permissions.
 
-### Docker image (GitHub container registry; Docker Hub optional)
+### Docker image (Docker Hub and the GitHub container registry)
 
 The published image is the same `docker/Dockerfile` the e2e tests build: no
 test code or test tooling goes into it (`tests/` is not in the build context,
 dev dependencies are not installed, and `docker/image_checks.py` checks every
 image before it is pushed and in the e2e suite).
 
-The canonical image is **`ghcr.io/imperialcollegelondon/heliopuddle`**: `:latest` is the newest release
-(none yet: use `:main` until `v0.1.0` is tagged), `:main` follows the main
-branch, and `:pr-<number>` is a pull request's build (see the tags below). A
-fork publishes to its own `ghcr.io/<owner>/<repo>`.
+The image is published to Docker Hub as **`heliopuddle/heliopuddle`** (the one
+the user docs use) and to **`ghcr.io/imperialcollegelondon/heliopuddle`**, with
+the same tags: `:latest` is the newest release, `:X.Y.Z` and `:X.Y` a release,
+and `:main` follows the main branch. `:pr-<number>` pull request builds are on
+ghcr.io only (see the tags below). A fork publishes to its own
+`ghcr.io/<owner>/<repo>`, and to Docker Hub only if it sets the variables below.
 
 **Run it with no settings** and it is a complete standalone server:
 
@@ -175,7 +177,10 @@ to the repository. The repository variable `GHCR_REPOSITORY` renames it. To
 also push to Docker Hub, set the repository variable `DOCKERHUB_REPOSITORY`
 (e.g. `myorg/heliopuddle`) and the secrets `DOCKERHUB_USERNAME` and
 `DOCKERHUB_TOKEN` (an access token with read/write scope); every build then
-goes to both registries with the same tags. Without that variable no Docker
+goes to both registries with the same tags. The upstream repository sets
+`DOCKERHUB_REPOSITORY=heliopuddle/heliopuddle`; its token is a personal access
+token of a Docker ID with write access to that repository (organization access
+tokens need a paid Docker plan), and `DOCKERHUB_USERNAME` is that Docker ID. Without that variable no Docker
 Hub step runs. Pull request images go to ghcr.io only.
 
 | Trigger | Tags |

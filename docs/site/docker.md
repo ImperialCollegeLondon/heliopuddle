@@ -1,8 +1,21 @@
 # Docker
 
-The published image is `ghcr.io/imperialcollegelondon/heliopuddle`. `:latest` is
-the newest release, `:main` follows the main branch and `:pr-<number>` is a pull
-request's build.
+The image is on Docker Hub as
+[`heliopuddle/heliopuddle`](https://hub.docker.com/r/heliopuddle/heliopuddle):
+
+```bash
+docker pull heliopuddle/heliopuddle
+```
+
+| Tag | Image |
+|---|---|
+| `latest` | the newest release |
+| `X.Y.Z`, `X.Y` (e.g. `0.1.0`, `0.1`) | a release; `X.Y` moves to its newest patch |
+| `main` | the main branch |
+
+The same tags are also on the GitHub container registry,
+`ghcr.io/imperialcollegelondon/heliopuddle`, which additionally has
+`pr-<number>` images built from pull requests.
 
 ## docker run
 
@@ -10,7 +23,7 @@ request's build.
 docker run -p 8080:8080 -p 127.0.0.1:4200:4200 \
   -v $PWD/data:/data -v $PWD/projects:/config \
   -v hp-state:/var/lib/heliopuddle \
-  ghcr.io/imperialcollegelondon/heliopuddle:latest
+  heliopuddle/heliopuddle
 ```
 
 | Port | Serves |
@@ -75,7 +88,7 @@ services:
       start_period: 10s
 
   heliopuddle:
-    image: ghcr.io/imperialcollegelondon/heliopuddle:latest
+    image: heliopuddle/heliopuddle:latest
     restart: unless-stopped
     depends_on:
       postgres:

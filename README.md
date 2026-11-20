@@ -226,14 +226,16 @@ def test_publish_retries_a_busy_path(heliopuddle_fake):
 A contract test in this repository runs the same scenarios against the fake
 and the real API, so the fake stays faithful.
 
-Or with Docker, using the published image (`:latest` is the newest release;
-`:main` follows the main branch and `:pr-<number>` is a pull request's build):
+Or with Docker, using the published image `heliopuddle/heliopuddle` on Docker Hub
+(`:latest` is the newest release, `:X.Y.Z` a release and `:main` follows the
+main branch; the same tags, plus `:pr-<number>` pull request builds, are on
+`ghcr.io/imperialcollegelondon/heliopuddle`):
 
 ```bash
 docker run -p 8080:8080 \
   -v $PWD/data:/data -v $PWD/examples/projects:/config \
   -v hp-state:/var/lib/heliopuddle \
-  ghcr.io/imperialcollegelondon/heliopuddle:latest
+  heliopuddle/heliopuddle
 ```
 
 The image also runs an embedded Prefect server on port 4200. Its API has **no

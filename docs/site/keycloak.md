@@ -45,7 +45,7 @@ setting if it cannot.
 ```yaml
 services:
   heliopuddle:
-    image: ghcr.io/imperialcollegelondon/heliopuddle:latest
+    image: heliopuddle/heliopuddle:latest
     restart: unless-stopped
     ports:
       - "8080:8080"
