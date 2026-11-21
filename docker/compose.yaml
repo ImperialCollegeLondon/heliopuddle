@@ -4,13 +4,13 @@
 #   docker compose -f docker/compose.yaml logs heliopuddle | grep "first admin"   # the admin password
 #
 # Then open http://localhost:8080 (UI and API) and http://localhost:4200 (Prefect).
-# HELIOPUDDLE_IMAGE picks another image, e.g. ghcr.io/imperialcollegelondon/heliopuddle:main
-# (until the first release) or :pr-<number> to try a pull request.
+# HELIOPUDDLE_IMAGE picks another image, e.g. heliopuddle/heliopuddle:main, or
+# ghcr.io/imperialcollegelondon/heliopuddle:pr-<number> to try a pull request.
 # See docs/design/deployment.md, "Docker image".
 
 services:
   heliopuddle:
-    image: ${HELIOPUDDLE_IMAGE:-ghcr.io/imperialcollegelondon/heliopuddle:latest}
+    image: ${HELIOPUDDLE_IMAGE:-heliopuddle/heliopuddle:latest}
     restart: unless-stopped
     ports:
       - "8080:8080"   # API (/api/v1) and UI (/)

@@ -103,7 +103,7 @@ jobs:
           -n auto --dist loadfile
       - name: upload requirement report
         if: ${{ !cancelled() && matrix.python-version == '3.14' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: req-unit
           path: .reports/req-unit.json
@@ -139,7 +139,7 @@ jobs:
           --req-report=.reports/req-integration-${{ matrix.shard }}.json
       - name: upload requirement report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: req-integration-${{ matrix.shard }}
           path: .reports/req-integration-${{ matrix.shard }}.json
@@ -167,14 +167,14 @@ jobs:
         run: uv run pytest tests/e2e --req-report=.reports/req-e2e.json
       - name: upload requirement report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: req-e2e
           path: .reports/req-e2e.json
           if-no-files-found: error
       - name: upload screenshots and container log
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots
           path: |
@@ -195,7 +195,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: req-*
           path: .reports

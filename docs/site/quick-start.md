@@ -16,6 +16,24 @@ extra it only prints how to install it.
 With [uv](https://docs.astral.sh/uv/) you can install it as a tool instead:
 `uv tool install "heliopuddle[server]"`.
 
+## Or run it with Docker
+
+The server is also published as a Docker image,
+[`heliopuddle/heliopuddle`](https://hub.docker.com/r/heliopuddle/heliopuddle),
+with the server, CLI and every storage backend installed:
+
+```bash
+docker run -p 8080:8080 -p 127.0.0.1:4200:4200 \
+  -v hp-state:/var/lib/heliopuddle heliopuddle/heliopuddle
+```
+
+With no settings it is a complete server: the API and UI on
+<http://localhost:8080>, SQLite and an embedded Prefect server on port 4200
+(published on loopback only, as it has no authentication), and an example
+project. The `admin`
+password is in the container log (`docker logs <container>`). See
+[Docker](docker.md) for volumes, settings and a Compose setup with Postgres.
+
 ## Run the server
 
 ```bash
