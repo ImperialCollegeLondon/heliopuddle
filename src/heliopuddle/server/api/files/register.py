@@ -16,6 +16,7 @@ from heliopuddle.server.api.deps import (
 )
 from heliopuddle.server.api.errors import (
     check_upload_size,
+    require_covered,
 )
 from heliopuddle.server.api.files._shared import read_file, validate_path
 from heliopuddle.server.api.repair import attempt_write
@@ -75,6 +76,7 @@ def register_file(
     check_upload_size(ctx.settings, body.size)
     location = body.storage_location or cfg.storage_locations[0].name
     validate_path(body.path)
+    require_covered(ctx, project, location, body.path)
 
     def conflict_detail(e: models.ConflictError) -> str:
         detail = str(e)

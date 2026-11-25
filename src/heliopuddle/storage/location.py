@@ -7,143 +7,51 @@ per backend is in :mod:`heliopuddle.storage.backends`.
 from __future__ import annotations
 
 import contextlib
-import io
 import posixpath
 import shutil
-import uuid
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Literal, cast
+from typing import Any, BinaryIO, cast
 
 import fsspec
 from fsspec.core import url_to_fs
 
 from heliopuddle.storage import backends
 from heliopuddle.storage.hashing import CHUNK_SIZE, md5_stream
-from heliopuddle.storage.redact import redact_text, redact_url
+from heliopuddle.storage.paths import (
+    TEMP_SUFFIX,
+    CheckedReader,
+    CreateRoot,
+    FileInfo,
+    ListEntry,
+    PathOutsideStorageLocation,
+    StorageRootMissingError,
+    SymlinkError,
+    TempName,
+    backup_path,
+    listing_scope,
+    normalise_path_prefix,
+    parse_temp_path,
+    staging_path,
+    strip_path_prefix,
+)
 
-TEMP_SUFFIX = ".hp-tmp"
-
-CreateRoot = bool | Literal["auto"]
-
-
-class CheckedReader(io.RawIOBase):
-    """Check operation ownership before and after each read from a binary source."""
-
-    def __init__(self, source: BinaryIO, check: Callable[[], None]) -> None:
-        self.source = source
-        self.check = check
-
-    def read(self, size: int = -1) -> bytes:
-        self.check()
-        data = self.source.read(size)
-        self.check()
-        return data
-
-
-def staging_path(path: str, token: str) -> str:
-    """Unique staging path for an operation: ``<path>.<token>.hp-tmp``."""
-    return f"{path}.{token}{TEMP_SUFFIX}"
-
-
-def backup_path(path: str, token: str) -> str:
-    """Backup path used while publishing an overwrite: ``<path>.<token>.hp-old.hp-tmp``."""
-    return f"{path}.{token}.hp-old{TEMP_SUFFIX}"
-
-
-@dataclass(frozen=True)
-class TempName:
-    """A parsed ``<name>.<token>.hp-tmp`` or ``<name>.<token>.hp-old.hp-tmp`` file name.
-
-    Attributes:
-        name: the final name (or path) the temporary file belongs to.
-        token: the operation token (a UUID) in the name.
-        backup: True for a backup (``.hp-old.hp-tmp``), False for a staged file.
-    """
-
-    name: str
-    token: str
-    backup: bool
-
-
-def parse_temp_path(path: str) -> TempName | None:
-    """Parse a staging or backup path made by :func:`staging_path` or :func:`backup_path`.
-
-    The token must be a canonical UUID, so a file such as
-    ``data.dat.v2.<token>.hp-tmp`` is never read as a temporary file of
-    ``data.dat``.
-
-    Args:
-        path: a relative path or a bare file name.
-
-    Returns:
-        The parts, or None if ``path`` does not have exactly that shape.
-    """
-    if not path.endswith(TEMP_SUFFIX):
-        return None
-    rest = path[: -len(TEMP_SUFFIX)]
-    backup = rest.endswith(".hp-old")
-    if backup:
-        rest = rest[: -len(".hp-old")]
-    name, dot, token = rest.rpartition(".")
-    if not dot or not name:
-        return None
-    try:
-        if str(uuid.UUID(token)) != token:
-            return None
-    except ValueError:
-        return None
-    return TempName(name, token, backup)
-
-
-class SymlinkError(ValueError):
-    """A path goes through a symbolic link, which a storage location never follows (STO-15)."""
-
-
-class StorageRootMissingError(FileNotFoundError):
-    """The root of a storage location (its bucket, container, share or directory) is missing.
-
-    Raised when the root does not exist and ``create_root`` does not allow
-    creating it, or creating it did not work.
-    """
-
-    def __init__(self, url: str, reason: str | None = None) -> None:
-        super().__init__(
-            f"the root of storage location {redact_url(url)!r} does not exist: "
-            + (
-                redact_text(reason)
-                if reason
-                else "create the bucket, container, share or directory, or set create_root: true"
-            )
-        )
-        self.url = redact_url(url)
-
-
-@dataclass(frozen=True)
-class ListEntry:
-    """One file found by :meth:`StorageLocation.list_files`.
-
-    Attributes:
-        path: relative, ``/``-separated path within the storage location.
-        size: size in bytes.
-        mtime: modification time (timezone-aware), if the backend reports one.
-        md5: the backend's own md5 (hex) if it reports one, else None.
-    """
-
-    path: str
-    size: int
-    mtime: datetime | None
-    md5: str | None = None
-
-
-@dataclass(frozen=True)
-class FileInfo:
-    """Size and modification time of a file in a storage location."""
-
-    size: int
-    mtime: datetime | None
+__all__ = [
+    "TEMP_SUFFIX",
+    "CheckedReader",
+    "CreateRoot",
+    "FileInfo",
+    "ListEntry",
+    "PathOutsideStorageLocation",
+    "StorageLocation",
+    "StorageRootMissingError",
+    "SymlinkError",
+    "TempName",
+    "backup_path",
+    "normalise_path_prefix",
+    "parse_temp_path",
+    "staging_path",
+]
 
 
 class StorageLocation:
@@ -156,9 +64,15 @@ class StorageLocation:
         create_root: create a missing root (True), never create it (False),
             or choose per backend (``"auto"``: create it except on object
             stores, whose bucket or container must already exist).
+        path_prefix: the project folder this storage location's root holds
+            (STO-23), e.g. ``upload_mirror``; ``""`` for the whole project.
+            Every path argument and every listed path is a project path:
+            ``upload_mirror/x.csv`` is stored at ``<root>/x.csv``, and a path
+            outside the prefix raises :class:`PathOutsideStorageLocation`.
 
     Raises:
-        ValueError: if ``create_root`` is not True, False or ``"auto"``.
+        ValueError: if ``create_root`` is not True, False or ``"auto"``, or
+            ``path_prefix`` is not a plain relative folder.
     """
 
     def __init__(
@@ -166,9 +80,11 @@ class StorageLocation:
         url: str,
         storage_options: Mapping[str, Any] | None = None,
         create_root: CreateRoot = "auto",
+        path_prefix: str = "",
     ) -> None:
         if not (isinstance(create_root, bool) or create_root == "auto"):
             raise ValueError(f"create_root must be true, false or auto: {create_root!r}")
+        self.path_prefix = normalise_path_prefix(path_prefix)
         self.url = url
         self.storage_options = dict(storage_options or {})
         fs, root = url_to_fs(url, **self.storage_options)
@@ -183,17 +99,59 @@ class StorageLocation:
         return protocol if isinstance(protocol, str) else protocol[0]
 
     def full_path(self, path: str) -> str:
-        """Return the filesystem path of a relative path.
+        """Return the filesystem path of a relative project path.
 
         Raises:
             ValueError: if ``path`` is absolute, empty or escapes the root.
+            PathOutsideStorageLocation: ``path`` is outside the ``path_prefix``.
         """
         if not path or path.startswith("/") or "\\" in path:
             raise ValueError(f"path must be relative and '/'-separated: {path!r}")
         normalised = posixpath.normpath(path)
         if normalised == "." or normalised.startswith(".."):
             raise ValueError(f"path escapes the storage location root: {path!r}")
-        return posixpath.join(self.root, normalised) if self.root != "/" else "/" + normalised
+        rel = strip_path_prefix(self.path_prefix, normalised)
+        return posixpath.join(self.root, rel) if self.root != "/" else "/" + rel
+
+    def _root_path(self, rel: str) -> str:
+        """The filesystem path of ``rel``, a validated path relative to the root itself."""
+        if not rel or rel.startswith("/") or posixpath.normpath(rel).startswith(".."):
+            raise ValueError(f"path escapes the storage location root: {rel!r}")
+        return posixpath.join(self.root, rel) if self.root != "/" else "/" + rel
+
+    @staticmethod
+    def _project_dir(prefix: str) -> str:
+        """A validated, normalised project folder (``""`` for the whole project)."""
+        if not prefix or prefix.strip("/") == "":
+            return ""
+        if prefix.startswith("/") or "\\" in prefix:
+            raise ValueError(f"path must be relative and '/'-separated: {prefix!r}")
+        normalised = posixpath.normpath(prefix.rstrip("/"))
+        if normalised == ".":
+            return ""
+        if normalised.startswith(".."):
+            raise ValueError(f"path escapes the storage location root: {prefix!r}")
+        return normalised
+
+    def dir_path(self, directory: str) -> str | None:
+        """The filesystem path of a project folder, or None if it is outside this location.
+
+        Unlike :meth:`full_path`, the ``path_prefix`` folder itself and its
+        parents map to the root (a listing there sees the whole storage
+        location).
+        """
+        scope = listing_scope(self.path_prefix, self._project_dir(directory))
+        if scope is None:
+            return None
+        return self.root if not scope else self._root_path(scope)
+
+    def covers(self, path: str) -> bool:
+        """Whether the project ``path`` can have a copy here (inside the ``path_prefix``)."""
+        try:
+            self.full_path(path)
+        except ValueError:
+            return False
+        return True
 
     def refuse_symlink(self, path: str) -> None:
         """Raise :class:`SymlinkError` if ``path`` is, or lies below, a symlink in the root."""
@@ -201,8 +159,12 @@ class StorageLocation:
             raise SymlinkError(f"path goes through a symbolic link: {path!r}")
 
     def exists(self, path: str) -> bool:
-        """Return True if ``path`` exists."""
-        return self.fs.exists(self.full_path(path))
+        """Return True if ``path`` exists (False outside the ``path_prefix``: nothing can)."""
+        try:
+            full = self.full_path(path)
+        except PathOutsideStorageLocation:
+            return False  # invalid paths still raise ValueError
+        return self.fs.exists(full)
 
     def info(self, path: str) -> FileInfo:
         """Return the size and modification time of ``path``.
@@ -428,9 +390,11 @@ class StorageLocation:
     def list_files(self, prefix: str = "") -> Iterator[ListEntry]:
         """Yield every file under ``prefix`` (recursively), with size, mtime and native md5.
 
-        ``prefix`` is a relative directory path (``""`` for the whole storage
-        location). A prefix that does not exist yields nothing. Directories and
-        directory marker objects are not yielded.
+        ``prefix`` is a relative directory *project* path (``""`` for the whole
+        storage location); with a ``path_prefix``, listed paths are project
+        paths too, and a ``prefix`` outside it yields nothing. A prefix that
+        does not exist yields nothing. Directories and directory marker
+        objects are not yielded.
 
         The listing streams directory by directory, like ``fs.walk`` with
         ``detail=True`` (one ``fs.ls(detail=True)`` per directory): only the
@@ -443,7 +407,10 @@ class StorageLocation:
         omits subdirectories it fails to list, so it is not used). Symbolic
         links (to files or directories) are skipped (STO-15).
         """
-        base = self.root if not prefix else self.full_path(prefix.rstrip("/"))
+        scope = listing_scope(self.path_prefix, self._project_dir(prefix))
+        if scope is None:
+            return  # the prefix is outside this storage location's path_prefix
+        base = self.root if not scope else self._root_path(scope)
         root = self.root.rstrip("/") + "/" if self.root != "/" else "/"
         pending = [self._strip(base)]
         while pending:
@@ -482,7 +449,7 @@ class StorageLocation:
         if not rel:
             return None
         return ListEntry(
-            path=rel,
+            path=f"{self.path_prefix}/{rel}" if self.path_prefix else rel,
             size=int(info.get("size") or 0),
             mtime=backends.info_mtime(info),
             md5=backends.native_md5(info),

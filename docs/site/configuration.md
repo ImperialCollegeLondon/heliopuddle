@@ -55,6 +55,7 @@ SFTP, S3, Azure Blob and GCS (install the matching extra).
 | `accept_external_changes` | bool | `true` | Tolerate files changed in the store by something other than hp. |
 | `create_root` | `true`, `false` or `auto` | `auto` | Create a missing root. `auto` creates it except on object stores, whose bucket or container must already exist. |
 | `quota` | size | none | Cap on the indexed size of the location. Rules check it before copying or moving in. |
+| `path_prefix` | folder | `""` (whole project) | The project folder this storage location's root holds, e.g. `upload_mirror`: the file `upload_mirror/x.csv` is stored at `x.csv` in it, and files outside the folder cannot have a copy there. See [partial storage locations](storage.md#a-storage-location-that-holds-one-folder). |
 
 ### Credentials from Prefect blocks
 

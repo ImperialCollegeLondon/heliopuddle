@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
-from hashlib import sha256
 from time import sleep
 from typing import Any
 
@@ -26,6 +25,7 @@ from heliopuddle.server.services.rule_checkpoint import (
     _persist_checkpoint,
     _remaining,
     _schedule_successor,
+    rule_spec_hash,
 )
 from heliopuddle.server.services.rule_types import (
     SYSTEM_USER,
@@ -226,7 +226,7 @@ def reconcile_rule(
         mode="full",
         selected_at=utcnow(),
         full_after_id=0,
-        spec_hash=sha256(config.model_dump_json().encode()).hexdigest(),
+        spec_hash=rule_spec_hash(resolved),
     )
     pause = config.options.pause_between_runs.total_seconds()
     while True:
@@ -297,7 +297,7 @@ def run_rule(
             if (
                 not checkpoint.pending
                 or checkpoint.state_success_at != last_success
-                or checkpoint.spec_hash != sha256(config.model_dump_json().encode()).hexdigest()
+                or checkpoint.spec_hash != rule_spec_hash(resolved)
             ):
                 get_run_logger().info("rule %s: stale continuation skipped", rule)
                 return RuleSummary(project=project, rule=rule, mode=mode)

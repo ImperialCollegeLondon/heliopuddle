@@ -26,6 +26,7 @@ from heliopuddle.config.placeholders import (
 )
 from heliopuddle.durations import Duration
 from heliopuddle.storage.backends import server_only
+from heliopuddle.storage.paths import normalise_path_prefix, storage_identity
 
 
 class StorageLocationConfig(BaseModel):
@@ -64,12 +65,23 @@ class StorageLocationConfig(BaseModel):
         "on object stores, whose bucket or container must already exist",
     )
     quota: Size | None = Field(default=None, gt=0, description="Optional indexed-size quota")
+    path_prefix: str = Field(
+        default="",
+        description="The project folder this storage location's root holds, e.g. "
+        "upload_mirror: the project path upload_mirror/x.csv is stored at <root>/x.csv and "
+        "paths outside it cannot have a copy here (STO-23). Empty: the whole project",
+    )
 
     #: Where the storage location was configured, e.g. ``proj.yaml: storage_locations.0``;
     #: set by the loader, used to name the field in credential problems.
     _origin: str | None = PrivateAttr(default=None)
     #: Whether this is the project's first storage location (set by ProjectConfig).
     _first: bool = PrivateAttr(default=False)
+
+    @field_validator("path_prefix")
+    @classmethod
+    def _path_prefix(cls, v: str) -> str:
+        return normalise_path_prefix(v)
 
     @field_validator("url")
     @classmethod
@@ -101,6 +113,15 @@ class StorageLocationConfig(BaseModel):
         Safe for logs and messages; it is also the storage location's ``url`` in the DB.
         """
         return self.url if self.url is not None else f"prefect-block:{self.block}"
+
+    @property
+    def identity(self) -> str:
+        """What must not change under a running index: the URL plus any ``path_prefix``.
+
+        Compared with :func:`heliopuddle.server.models.storage_identity` of the
+        DB row, so a prefix change (STO-23) stops an index started before it.
+        """
+        return storage_identity(self.display_url, self.path_prefix)
 
     @property
     def uses_blocks(self) -> bool:

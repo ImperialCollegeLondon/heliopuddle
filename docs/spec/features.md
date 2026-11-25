@@ -521,7 +521,7 @@ remotes (SharePoint, OneDrive, Box, ...) are storage locations through a new
 `rclone://` fsspec backend. Mirror rules are dropped: the existing copy, move
 and delete rules already sync a subset of files, including deletes.
 Requirements: STO-05 (rewritten), STO-17, STO-18, STO-19, STO-20, STO-21,
-STO-22, DEP-08 (amended), DEP-21, DEP-22, plus every earlier milestone
+STO-22, STO-23, DEP-08 (amended), DEP-21, DEP-22, plus every earlier milestone
 requirement.
 Approved plan: [reviews/m7-plan.md](reviews/m7-plan.md). Design:
 [storage](../design/storage.md#credentials).
@@ -544,6 +544,9 @@ In scope:
   and otherwise downloaded at a pinned version with pinned hashes.
 - An rclone storage location is never a project's first storage location
   and is never accessed directly by clients.
+- A storage location can hold one project folder (`path_prefix`, STO-23),
+  e.g. an rclone mirror of `upload_mirror/`; the mapping is in
+  `StorageLocation`, so every backend supports it.
 
 Out of scope: rclone as the first storage location (see
 [later](requirements/later.md)), an rcd service shared over the network,
@@ -737,3 +740,4 @@ in [operations](../design/operations.md).
 | K10 | Tests | No real Box or SharePoint: rclone over a WebDAV container, plus a fake local OAuth token endpoint for token write-back (rclone runs on the same machine, so no container is needed) |
 | K11 | Binary | Bundled in the image; otherwise downloaded at a pinned version with pinned SHA256s (`HELIOPUDDLE_RCLONE_AUTO_DOWNLOAD`) |
 | K12 | First storage location | rclone cannot be a project's first storage location in M7 (lock contention on interactive requests, SharePoint changing Office files); revisit later |
+| K13 | Partial storage locations | `path_prefix: <folder>`: a storage location's root holds one project folder; paths stay project paths everywhere, the mapping is only in `StorageLocation`; rules skip files outside a destination's prefix; prefixed storage locations are reached through the API (`direct_access: false`) |

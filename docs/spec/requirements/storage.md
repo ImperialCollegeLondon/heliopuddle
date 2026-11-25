@@ -222,6 +222,26 @@ block after the session, even though the backend call itself fails.
 *Verify:* integration test with a fake local token endpoint, a Prefect block
 and the rclone binary.
 
+**STO-23 (M7)** **A storage location can hold one project folder.**
+`path_prefix: <folder>` (default empty: the whole project) says that the
+storage location's root holds the project folder `<folder>`: the project path
+`<folder>/x.csv` is stored at `<root>/x.csv`, and a path outside the folder can
+never have a copy there. The mapping is in `StorageLocation` alone, so it
+applies to every backend (fsspec or rclone), and every path in the API, the
+DB, rules and listings stays a project path. The prefix is a plain relative
+folder (no `..`, `.`, empty segments, `\` or glob characters). A rule never
+selects a file outside its destination's prefix; an upload or registration
+outside a storage location's prefix is refused with `422`; the index adopts
+files found under the root as `<folder>/...`; the API reports `path_prefix`
+and `direct_access: false` (older clients would map paths wrongly). A changed
+prefix moves every copy, like a changed `url` (SVC-12), restarts the rules into
+that storage location from a full run, and stops an index started before it;
+copies left outside the new prefix read as not found.
+*Verify:* unit tests of the mapping, listing and validation on local and
+memory storage; a rule copying `upload_mirror/**` into a prefixed local and a
+prefixed rclone (stand-in) storage location; index adoption; the 422; the
+config-sync reset; integration test with the real rclone binary over WebDAV.
+
 **STO-22 (M7)** **rcd is private.** rcd listens on a Unix socket in a 0700
 temp directory (loopback TCP only where Unix sockets are unavailable), always
 with a random per-session user and password, never with `--rc-no-auth`,

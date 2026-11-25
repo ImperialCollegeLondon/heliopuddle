@@ -57,7 +57,7 @@ def _load_checkpoint(
             checkpoint.pending
             and checkpoint.watermark == watermark
             and checkpoint.state_success_at == last_success_at
-            and checkpoint.spec_hash == sha256(rule.spec.model_dump_json().encode()).hexdigest()
+            and checkpoint.spec_hash == rule_spec_hash(rule)
         ):
             return checkpoint
         return None
@@ -122,6 +122,12 @@ def _schedule_successor(ctx: AppContext, rule: _Rule, *, parameters: dict[str, A
             )
 
 
+def rule_spec_hash(rule: _Rule) -> str:
+    """The rule's spec plus its destination's path_prefix (STO-23): either changing
+    abandons a saved continuation."""
+    return sha256((rule.spec.model_dump_json() + "\0" + rule.within).encode()).hexdigest()
+
+
 def _new_checkpoint(ctx: AppContext, rule: _Rule, mode: RuleMode) -> RuleContinuation:
     watermark, age_since = None, None
     if rule.name is not None:
@@ -142,7 +148,7 @@ def _new_checkpoint(ctx: AppContext, rule: _Rule, mode: RuleMode) -> RuleContinu
         age_since=age_since,
         state_success_at=age_since,
         watermark=watermark,
-        spec_hash=sha256(rule.spec.model_dump_json().encode()).hexdigest(),
+        spec_hash=rule_spec_hash(rule),
     )
 
 
@@ -162,6 +168,7 @@ def _candidates(
             after_id=checkpoint.full_after_id,
             through=checkpoint.selected_at if checkpoint.full_after_id is None else None,
             limit=limit,
+            within=rule.within,
         )
 
 
@@ -187,6 +194,7 @@ def _remaining(
             changed_after=lower,
             age_since=checkpoint.selected_at,
             limit=1,
+            within=rule.within,
         )
     if not late:
         return None

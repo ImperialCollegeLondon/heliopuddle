@@ -19,6 +19,7 @@ from heliopuddle.server.database.orm import (
 )
 from heliopuddle.server.models.rules import change_key_page, change_time, through_time
 from heliopuddle.server.schemas.rules import RuleCursor
+from heliopuddle.storage.paths import storage_identity
 
 
 def get_index_progress(
@@ -72,7 +73,11 @@ def _check_progress_storage(
     if expected_url is None:
         return
     storage = session.get(StorageLocation, storage_location_id, with_for_update={"key_share": True})
-    if storage is None or not storage.active or storage.url.rstrip("/") != expected_url.rstrip("/"):
+    if (
+        storage is None
+        or not storage.active
+        or storage_identity(storage.url, storage.path_prefix) != expected_url.rstrip("/")
+    ):
         raise RuntimeError("storage location changed while indexing; progress was not advanced")
 
 

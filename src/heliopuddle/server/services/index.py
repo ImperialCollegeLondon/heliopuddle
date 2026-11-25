@@ -247,7 +247,7 @@ def _index(
                 loc.storage_location_id,
                 mode,
                 watermark,
-                expected_url=loc.config.display_url,
+                expected_url=loc.config.identity,
             )
         if mode == "full":
             # A finished full chain may have added many rows: let SQLite plan with them.

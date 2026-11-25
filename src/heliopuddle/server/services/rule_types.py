@@ -60,6 +60,8 @@ class _Rule:
     source_id: int
     spec: RuleSpec
     name: str | None = None
+    # The destination's path_prefix (STO-23): files outside it are never selected.
+    within: str = ""
 
 
 def _resolve(ctx: AppContext, project: str, spec: RuleSpec, name: str | None = None) -> _Rule:
@@ -71,7 +73,8 @@ def _resolve(ctx: AppContext, project: str, spec: RuleSpec, name: str | None = N
         source = models.get_storage_location(session, project, spec.source)
         if source is None or not source.active:
             raise models.NotFoundError(f"storage location {project}/{spec.source} is inactive")
-        return _Rule(project, source.project_id, source.id, spec, name)
+        within = cfg.storage_location(spec.destination).path_prefix if spec.destination else ""
+        return _Rule(project, source.project_id, source.id, spec, name, within)
 
 
 def _enabled(ctx: AppContext, rule: _Rule) -> bool:

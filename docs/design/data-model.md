@@ -32,6 +32,7 @@ upgraded and must be recreated. New migrations are added after `0001`.
 | project_id | FK project | |
 | name | str | unique per project |
 | url | str | fsspec URL from config, with `${VAR}` references resolved at load (put secrets in `storage_options`, which are not stored) |
+| path_prefix | str | the project folder the root holds (STO-23), `''` for the whole project; a change resets the copies like a changed `url` (migration 0003) |
 | resolved_root | str, nullable | for a storage location configured through Prefect blocks: the root it last resolved to, without credentials (scheme, host, port, path). Its `url` stays `prefect-block:<name>` or the placeholder, so a different resolved root is what resets the copies as a moved root (SVC-12, STO-19). NULL until first resolved (migration 0002) |
 | accept_external_changes | bool | |
 | active | bool | false when removed from config; rows are never deleted |

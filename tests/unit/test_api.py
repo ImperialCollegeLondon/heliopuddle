@@ -122,6 +122,7 @@ def test_storage_locations_list_and_detail(client: TestClient, store: Path) -> N
         "last_full_index_at": None,
         "last_incremental_index_at": None,
         "quota": None,
+        "path_prefix": "",
         "status": "ok",
         "problems": [],
         "direct_access": True,
