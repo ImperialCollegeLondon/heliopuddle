@@ -216,8 +216,10 @@ handling and `StartupError` are in `server/serving.py`) runs, in one process:
   deployment (the services have not registered it) or an unreachable Prefect
   gives `503` with the deployment name in the message.
 - **Global limits:** `hp_concurrency(name)` wraps Prefect's
-  `concurrency()` context manager; names are `storage-location:<project>:<name>` and
-  `rule:<project>:<name>` (Prefect limit names cannot contain `/`). Deployments whose runs must not overlap use
+  `concurrency()` context manager; names are `storage-location:<project>:<name>`,
+  `rule:<project>:<name>` and `rclone:<config>` (one rcd per rclone config,
+  see [storage](storage.md#sessions-one-rcd-per-config-started-locally))
+  (Prefect limit names cannot contain `/`). Deployments whose runs must not overlap use
   `concurrency_limit=1`. `hp_concurrency(..., wait=False)` tries once and
   raises `ConcurrencyBusyError` if the limit is full (the incremental index
   uses it to skip a run). `ensure_concurrency_limit(name)` creates a missing

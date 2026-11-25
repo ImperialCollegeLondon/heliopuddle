@@ -86,8 +86,10 @@ server package with api, database, models (DB access functions), schemas
 - **Storage is generic over fsspec.** Use only the generic fsspec filesystem
   API. Never add backend-specific code (protocol names, backend packages,
   per-backend branches) outside `heliopuddle/storage/backends.py`; a unit test
-  enforces this. Targets out of the box: local, SMB, SFTP, S3, Azure Blob and
-  GCS. See `docs/design/storage.md`.
+  enforces this. Targets out of the box: local, SMB, SFTP, S3, Azure Blob,
+  GCS and rclone remotes. hp's own `rclone://` filesystem
+  (`heliopuddle/storage/rclone/`) is a backend package like s3fs and is
+  exempt from that test. See `docs/design/storage.md`.
 - **Code size.** No Python file over 500 lines
   (`uv run python scripts/check_file_length.py`), no function over cyclomatic
   complexity 12 (ruff `C901`), and no duplicated blocks of 8+ lines in `src`
