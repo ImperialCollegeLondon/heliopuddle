@@ -68,6 +68,8 @@ class StorageLocationConfig(BaseModel):
     #: Where the storage location was configured, e.g. ``proj.yaml: storage_locations.0``;
     #: set by the loader, used to name the field in credential problems.
     _origin: str | None = PrivateAttr(default=None)
+    #: Whether this is the project's first storage location (set by ProjectConfig).
+    _first: bool = PrivateAttr(default=False)
 
     @field_validator("url")
     @classmethod
@@ -114,6 +116,11 @@ class StorageLocationConfig(BaseModel):
     def origin(self) -> str:
         """Where this storage location is configured, for messages."""
         return self._origin or f"storage location {self.name!r}"
+
+    @property
+    def is_first(self) -> bool:
+        """Whether this is its project's first storage location (the upload target)."""
+        return self._first
 
     def set_origin(self, origin: str) -> None:
         """Record where this storage location is configured (``<file>: storage_locations.<i>``)."""
@@ -213,6 +220,8 @@ class ProjectConfig(BaseModel):
         dupes = sorted({n for n in names if names.count(n) > 1})
         if dupes:
             raise ValueError(f"duplicate storage location names: {', '.join(dupes)}")
+        for index, location in enumerate(v):
+            location._first = index == 0  # pyright: ignore[reportPrivateUsage]
         if v and server_only(v[0].url):
             raise ValueError(
                 f"the first storage location ({v[0].name!r}) receives uploads and cannot be an "

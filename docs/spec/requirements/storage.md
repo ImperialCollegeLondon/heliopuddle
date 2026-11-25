@@ -140,8 +140,10 @@ object (`operations/stat` with hashes) with the same hash of the local spool
 compares sizes; `auto` is `native` when the backend reports a hash and
 `content` otherwise. A provider-computed hash of the stored bytes counts as
 verifying the destination hash (STO-03). An rclone storage location cannot be
-a project's first storage location (a config error) and is never accessed
-directly by clients (`direct_access: false` in the API).
+a project's first storage location (a literal URL is a config error; a block
+or Secret that resolves to one makes the storage location incomplete) and is
+never accessed directly by clients (`direct_access: false` in the API, decided
+from the resolved URL and `false` while it cannot be resolved).
 *Verify:* the STO-07 conformance suite through rclone's webdav backend against
 a WebDAV container (integration); unit tests against a fake rc server for
 spool, abort, verify modes, `about` fallbacks and errors.

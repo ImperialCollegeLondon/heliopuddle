@@ -28,6 +28,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from heliopuddle.config.placeholders import PLACEHOLDER, is_whole_placeholder
+from heliopuddle.storage.backends import server_only
 from heliopuddle.storage.location import StorageLocation
 from heliopuddle.storage.redact import redact_text, register_secret
 
@@ -196,7 +197,10 @@ def _whole_value(secret: Any) -> Any:
         except ValueError:
             return secret
         # Only objects and arrays: a password such as "12345" stays a string.
-        return parsed if isinstance(parsed, dict | list) else secret
+        if not isinstance(parsed, dict | list):
+            return secret
+        _register_secrets(parsed)  # each credential inside is redacted on its own
+        return parsed
     return secret
 
 
@@ -278,6 +282,13 @@ def resolve(cfg: StorageLocationConfig) -> tuple[str, dict[str, Any]]:
     options = _expand(options, f"{cfg.origin}.storage_options", problems)
     if not problems and not (isinstance(url, str) and url):
         problems.append(f"{cfg.origin}.url: resolves to an empty URL")
+    if not problems and cfg.is_first and server_only(url):
+        # The literal URL is checked when the config loads; a block can only
+        # be checked once it resolves (STO-05).
+        problems.append(
+            f"{cfg.origin}: the first storage location receives uploads and cannot be "
+            "an rclone storage location; list it after another storage location"
+        )
     if problems:
         raise StorageLocationIncomplete(problems)
     return url, options

@@ -97,7 +97,10 @@ are unresolvable. Other modules add problems for a resolved storage location
 with `register_problem_check` (rclone uses it).
 
 A whole-value placeholder takes the secret's value as JSON only when it is a
-JSON object or array, so a password such as `12345` stays a string. A
+JSON object or array, so a password such as `12345` stays a string; every
+string inside such a value is registered for redaction on its own. A
+malformed placeholder is reported by field and expected syntax only, never by
+value, because `${VAR}` has already been expanded into it. A
 storage location configured with `block:` shows as `prefect-block:<name>` in
 logs, messages and the DB `storage_location.url` column; a `url` with
 placeholders is stored unresolved. Inline options are merged over the block's
@@ -287,10 +290,14 @@ makes the rclone storage locations incomplete.
 ### Constraints
 
 - An rclone storage location cannot be a project's first storage location
-  (it would put every upload and download on the config lock); a config
-  error.
+  (it would put every upload and download on the config lock). A literal
+  `rclone://` URL is a config error; a first storage location whose block or
+  whole-URL Secret resolves to one is incomplete with that problem, checked
+  on every resolution, so a block created after startup is caught too.
 - Clients never reach rcd: the API reports `direct_access: false` and clients
-  transfer through the API.
+  transfer through the API. The flag is decided from the resolved URL (only
+  the flag is returned); a storage location that cannot be resolved reports
+  `false`.
 
 ### Tests
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from heliopuddle.config import ProjectConfig, StorageLocationConfig
 from heliopuddle.server.schemas import ProjectRead
 from heliopuddle.storage.backends import server_only
-from heliopuddle.storage.credentials import location_problems
+from heliopuddle.storage.credentials import StorageLocationIncomplete, location_problems, resolve
 
 if TYPE_CHECKING:
     from heliopuddle.server.database.orm import IndexProgress, StorageLocation
@@ -20,6 +20,22 @@ def index_times(progress: IndexProgress | None) -> dict[str, datetime | None]:
         "last_full_index_at": progress.last_full_at if progress else None,
         "last_incremental_index_at": progress.last_incremental_at if progress else None,
     }
+
+
+def _direct_access(url: str, cfg: StorageLocationConfig | None) -> bool:
+    """Whether clients may open the storage location themselves (not server-only, STO-05).
+
+    Decided by the resolved URL, so a block resolving to a server-only backend
+    is covered; while it cannot be resolved the answer is False. Only the
+    flag is returned, never the resolved credentials.
+    """
+    if cfg is None or not cfg.uses_blocks:
+        return not server_only(cfg.url if cfg is not None else url)
+    try:
+        resolved, _ = resolve(cfg)
+    except StorageLocationIncomplete:
+        return False
+    return not server_only(resolved)
 
 
 def storage_location_read(
@@ -43,7 +59,7 @@ def storage_location_read(
         "create_root": cfg.create_root if cfg else "auto",
         "quota": cfg.quota if cfg else None,
         "status": "incomplete" if problems else "ok",
-        "direct_access": not server_only(row.url),
+        "direct_access": _direct_access(row.url, cfg),
         "problems": problems,
         **index_times(progress),
     }

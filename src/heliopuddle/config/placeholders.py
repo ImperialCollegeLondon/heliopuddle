@@ -59,8 +59,9 @@ def check_placeholders(value: Any, field: str) -> None:
     for where, text in walk_strings(value, field):
         rest = PLACEHOLDER.sub("", text)
         if "{{" in rest or "}}" in rest:
+            # Never echo the value: ${VAR} is expanded before this check.
             raise ValueError(
-                f"{where}: invalid placeholder in {text!r}: expected "
+                f"{where}: invalid placeholder: expected "
                 "{{ prefect.blocks.secret.<name> }}, where <name> has only lowercase "
                 "letters, digits and dashes"
             )
