@@ -16,6 +16,7 @@ from heliopuddle.server.schemas import (
     FilePreview,
 )
 from heliopuddle.server.services.preview import preview_file
+from heliopuddle.storage.rclone import RcloneBusyError
 
 router = APIRouter()
 
@@ -40,6 +41,8 @@ def file_preview(file_id: int, ctx: Ctx) -> FilePreview:
         return preview_file.fn(file_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="file content not found") from None
+    except RcloneBusyError:
+        raise  # the global handler answers 503 with Retry-After
     except OSError as error:
         logger.error("API file preview read failed (%s)", type(error).__name__)
         raise HTTPException(status_code=503, detail="backing storage read failed") from None

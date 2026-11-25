@@ -22,6 +22,7 @@ from heliopuddle.server.services.content import readable_copies
 from heliopuddle.server.services.stores import store_for
 from heliopuddle.storage import backends
 from heliopuddle.storage.credentials import StorageLocationIncomplete
+from heliopuddle.storage.rclone import RcloneBusyError
 
 CACHE_SIZE = 64
 """Previews kept in memory per server process."""
@@ -107,6 +108,8 @@ def preview_file(file_id: int) -> FilePreview:
         except StorageLocationIncomplete as error:
             incomplete = error  # another copy may be readable
             continue
+        except RcloneBusyError:
+            raise  # answered 503 with Retry-After by the API
         except StorageReadError as error:
             raise OSError(str(error)) from None
         except Exception as error:

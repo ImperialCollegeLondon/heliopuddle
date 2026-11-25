@@ -20,6 +20,7 @@ from heliopuddle.server.models import uploads as uploads_db
 from heliopuddle.server.services.upload import (
     write_upload_content,
 )
+from heliopuddle.storage.rclone import RcloneBusyError
 
 router = APIRouter()
 
@@ -70,8 +71,8 @@ async def upload_content(token: str, request: Request, ctx: Ctx) -> Response:
         return not_current(error)
     except tr.CopyBusy as error:
         return busy(error.copy_id, error.deadline)
-    except HTTPException:
-        raise
+    except (HTTPException, RcloneBusyError):
+        raise  # RcloneBusyError: the global handler answers 503 with Retry-After
     except OSError as error:
         logger.error("API upload write failed (%s)", type(error).__name__)
         return JSONResponse(

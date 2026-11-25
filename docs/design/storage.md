@@ -189,7 +189,10 @@ with the union. The slots are held by a session thread for the session's
 life; Prefect renews their lease, and a dead holder's lease expires.
 Services wait for slots without limit; API requests wait at most
 `HELIOPUDDLE_RCLONE_API_WAIT` (default `30s`) and then answer `503` with
-`Retry-After`. Throughput on one config is serialised cluster-wide.
+`reason: rclone_busy` and `Retry-After`. `RcloneBusyError` is a `TimeoutError`
+(an `OSError`), so the content, preview and upload services and routers
+re-raise it before their generic storage-failure handlers. Throughput on one
+config is serialised cluster-wide.
 
 The lock and the block store are hooks the server registers
 (`set_session_hooks`); without them (unit tests) a process-local lock and the

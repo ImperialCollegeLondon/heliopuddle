@@ -13,6 +13,7 @@ from heliopuddle.server.schemas import FileRead, FileState, FileStorageLocationR
 from heliopuddle.server.services.stores import store_for
 from heliopuddle.storage.credentials import StorageLocationIncomplete
 from heliopuddle.storage.hashing import CHUNK_SIZE
+from heliopuddle.storage.rclone import RcloneBusyError
 
 
 def readable_copies(
@@ -80,6 +81,8 @@ def open_file_content(file_id: int) -> tuple[BinaryIO, bytes]:
             continue
         except StorageLocationIncomplete as error:
             incomplete = error  # another copy may be readable
+        except RcloneBusyError:
+            raise  # answered 503 with Retry-After by the API
         except Exception as error:
             raise OSError(f"backing storage read failed ({type(error).__name__})") from None
     if incomplete is not None:
