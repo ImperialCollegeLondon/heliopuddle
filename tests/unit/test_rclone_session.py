@@ -386,3 +386,15 @@ def test_invalid_or_missing_config_never_quotes_contents(
         _open([_file(twice)])
     with pytest.raises(RcloneUnavailable, match="does not exist"):
         _open([_file(short_tmp / "missing.conf")])
+
+
+@pytest.mark.req("STO-20")
+def test_config_file_aliases_share_one_lock(tmp_path: Path) -> None:
+    real = tmp_path / "conf" / "rclone.conf"
+    real.parent.mkdir()
+    real.write_text("[a]\ntype = memory\n")
+    link = tmp_path / "link.conf"
+    link.symlink_to(real)
+    dotted = tmp_path / "conf" / ".." / "conf" / "rclone.conf"
+    names = {source_from_options({"config_file": str(p)}).lock_name for p in (real, link, dotted)}
+    assert len(names) == 1

@@ -179,8 +179,9 @@ rclone config create sharepoint onedrive
 then copy the remote's section of `rclone.conf` into a Prefect block of type
 **RClone Remote Config File [ManagedFileTransfer]**, with fields `remote_name`
 (`sharepoint`) and `config_file_contents` (the section). This is the block
-prefect-managedfiletransfer uses, so existing blocks work as they are;
-heliopuddle registers the block type itself if that package is not installed.
+prefect-managedfiletransfer uses, so existing blocks work as they are.
+heliopuddle registers the block type with Prefect when the server starts, so
+it is in the Prefect UI's block catalogue even on a fresh Prefect server.
 
 On a single machine you can use a file instead: `config_file: /config/rclone.conf`.
 

@@ -96,7 +96,9 @@ def source_from_options(options: Mapping[str, Any]) -> ConfigSource:
         )
     if block:
         return ConfigSource("block", str(block))
-    return ConfigSource("file", str(Path(str(path)).expanduser().absolute()))
+    # Canonical: symlinks and ".." resolved, so every spelling of one file
+    # shares one lock and two rcds never refresh the same token.
+    return ConfigSource("file", str(Path(str(path)).expanduser().resolve()))
 
 
 def load_config(source: ConfigSource, store: BlockStore | None) -> str:

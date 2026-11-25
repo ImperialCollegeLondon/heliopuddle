@@ -195,6 +195,18 @@ The lock and the block store are hooks the server registers
 (`set_session_hooks`); without them (unit tests) a process-local lock and the
 file config source are used.
 
+`server start` registers the `RCloneConfigFileBlock` type with Prefect once
+Prefect is up (`register_rclone_block_type`), so the block can be created in
+the Prefect UI on a fresh server; a failure is a warning, never a startup
+error. On shutdown it closes the open rclone session after the served
+deployments stop and **before** Prefect stops (`close_rclone_sessions`),
+because writing a refreshed token back to its block needs Prefect; a session
+that does not close in time or a config that could not be saved is logged as
+an error (the remote may need reconnecting).
+
+A `config_file` is identified by its canonical path (`Path.resolve()`:
+symlinks and `..` resolved), so two spellings of one file share one lock.
+
 ### Security
 
 rcd's API can read and write anything rclone can reach, including every

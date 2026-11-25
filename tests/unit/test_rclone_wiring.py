@@ -299,3 +299,77 @@ def test_registering_rclone_again_does_not_fail() -> None:
     assert "rclone" in known_implementations
     importlib.reload(backends)
     assert "rclone" in known_implementations
+
+
+class _FakeManager:
+    def __init__(self, closed: bool, errors: list[str], raises: bool = False) -> None:
+        self.session = type("S", (), {"writeback_errors": errors})() if errors or closed else None
+        self.closed = closed
+        self.raises = raises
+        self.calls: list[tuple[float | None, bool]] = []
+
+    def close(self, timeout: float | None = None, *, force: bool = False) -> bool:
+        self.calls.append((timeout, force))
+        if self.raises:
+            raise RuntimeError("boom")
+        return self.closed
+
+
+@pytest.mark.req("STO-20")
+@pytest.mark.parametrize(
+    ("manager", "ok", "logged"),
+    [
+        (_FakeManager(closed=True, errors=[]), True, None),
+        (_FakeManager(closed=False, errors=[]), False, "did not close"),
+        (
+            _FakeManager(closed=True, errors=["saving rclone config block 'sp' failed"]),
+            False,
+            "not saved on shutdown",
+        ),
+        (
+            _FakeManager(closed=True, errors=[], raises=True),
+            False,
+            "Closing rclone sessions failed",
+        ),
+    ],
+)
+def test_close_sessions_reports_lost_write_back(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    manager: _FakeManager,
+    ok: bool,
+    logged: str | None,
+) -> None:
+    monkeypatch.setattr(rclone, "manager", manager)
+    with caplog.at_level("ERROR"):
+        assert rclone_hooks.close_rclone_sessions(5.0) is ok
+    assert manager.calls == [(5.0, True)]
+    if logged is None:
+        assert not caplog.records
+    else:
+        assert logged in caplog.text
+
+
+@pytest.mark.req("STO-20")
+def test_block_type_registration_never_stops_startup(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    registered: list[bool] = []
+
+    class Good:
+        @staticmethod
+        def register_type_and_schema(_sync: bool = True) -> None:
+            registered.append(_sync)
+
+    class Bad:
+        @staticmethod
+        def register_type_and_schema(_sync: bool = True) -> None:
+            raise ConnectionError("prefect is down")
+
+    monkeypatch.setattr(rclone_hooks, "config_block_class", lambda: Good)
+    assert rclone_hooks.register_rclone_block_type() is True
+    assert registered == [True]
+    monkeypatch.setattr(rclone_hooks, "config_block_class", lambda: Bad)
+    with caplog.at_level("WARNING"):
+        assert rclone_hooks.register_rclone_block_type() is False
+    assert "Could not register the rclone config block type" in caplog.text

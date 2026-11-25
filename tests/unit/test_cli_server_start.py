@@ -240,3 +240,13 @@ def test_failing_index_preparation_stops_startup(
     )
     assert fake.services_started == 0
     assert fake.prefect_stopped == 1
+
+
+@pytest.mark.req("STO-20")
+def test_rclone_sessions_close_after_services_and_before_prefect(
+    env: dict[str, str], fake: FakeRuntime
+) -> None:
+    result = runner.invoke(app, ["server", "start"])
+
+    assert result.exit_code == 0, result.output
+    assert fake.events == ["rclone.register", "services.stop", "rclone.close", "prefect.stop"]

@@ -233,3 +233,14 @@ def test_refreshed_token_is_saved_to_the_block(token_endpoint: str, hooks: None)
     saved = rclone_hooks.PrefectConfigBlockStore().load(name)
     assert "hp-refreshed-access" in saved
     assert "hp-old-access" not in saved
+
+
+@pytest.mark.req("STO-20")
+def test_block_type_is_registered_for_the_prefect_ui(harness: str) -> None:
+    from prefect.client.orchestration import get_client
+
+    assert rclone_hooks.register_rclone_block_type() is True
+    slug = rclone_hooks.config_block_class().get_block_type_slug()
+    with get_client(sync_client=True) as client:
+        block_type = client.read_block_type_by_slug(slug)
+    assert block_type.name == "RClone Remote Config File [ManagedFileTransfer]"

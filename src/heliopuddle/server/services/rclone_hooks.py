@@ -18,6 +18,7 @@ See docs/design/storage.md ("rclone").
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Iterator
@@ -30,13 +31,17 @@ from heliopuddle.storage import backends, rclone
 from heliopuddle.storage.credentials import register_problem_check, unregister_problem_check
 from heliopuddle.storage.rclone.config import load_config, parse_sections
 
+logger = logging.getLogger(__name__)
+
 __all__ = [
     "PROBLEM_CACHE_TTL",
     "PrefectConfigBlockStore",
+    "close_rclone_sessions",
     "config_block_class",
     "install_rclone",
     "prefect_lock",
     "rclone_problems",
+    "register_rclone_block_type",
 ]
 
 PROBLEM_CACHE_TTL = 60.0
@@ -220,3 +225,59 @@ def install_rclone(settings: Settings, *, replace: bool = True) -> None:
         register_problem_check(rclone_problems)
         _cache.clear()
         _installed = True
+
+
+def register_rclone_block_type() -> bool:
+    """Register the ``RCloneConfigFileBlock`` type with Prefect (once Prefect is up).
+
+    Defining or loading the class does not register it, so on a fresh Prefect
+    server the block could not be created in the Prefect UI. A failure is
+    logged and never stops startup: rclone storage locations then stay
+    incomplete until the block exists.
+
+    Returns:
+        True if the block type is registered.
+    """
+    try:
+        config_block_class().register_type_and_schema(_sync=True)
+    except Exception as e:
+        logger.warning(
+            "Could not register the rclone config block type with Prefect "
+            "(create it from Python instead): %s: %s",
+            type(e).__name__,
+            e,
+        )
+        return False
+    return True
+
+
+def close_rclone_sessions(timeout: float = 30.0) -> bool:
+    """Close the open rclone session now, saving refreshed tokens (call before Prefect stops).
+
+    Config blocks are saved through Prefect, so this must run while Prefect is
+    still up. A session that does not close in time, or a config that could
+    not be saved, is logged as an error: a refreshed token may be lost and the
+    remote may need reconnecting.
+
+    Returns:
+        True if no session is open and every changed config was saved.
+    """
+    session = rclone.manager.session
+    try:
+        closed = rclone.manager.close(timeout, force=True)
+    except Exception as e:
+        logger.error("Closing rclone sessions failed: %s: %s", type(e).__name__, e)
+        return False
+    if not closed:
+        logger.error(
+            "rclone sessions did not close within %.0fs; a refreshed token may not have "
+            "been saved to its config",
+            timeout,
+        )
+        return False
+    errors = list(session.writeback_errors) if session is not None else []
+    for error in errors:
+        logger.error(
+            "rclone config not saved on shutdown (reconnect the remote if it fails): %s", error
+        )
+    return not errors

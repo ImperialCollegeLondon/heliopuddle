@@ -49,7 +49,11 @@ from heliopuddle.server.services.deploy import (
     storage_location_ids,
     submit_adoption_runs,
 )
-from heliopuddle.server.services.rclone_hooks import install_rclone
+from heliopuddle.server.services.rclone_hooks import (
+    close_rclone_sessions,
+    install_rclone,
+    register_rclone_block_type,
+)
 from heliopuddle.server.services.runtime import (
     PrefectRuntime,
     PrefectStartupError,
@@ -390,6 +394,7 @@ def run(options: StartOptions) -> None:
             # and rclone sessions lock their config through it (STO-20).
             install_block_resolver()
             install_rclone(settings)
+            register_rclone_block_type()
             assert ctx is not None
             ensure_storage_roots(ctx, blocks=True)
         if shutdown.event.is_set():
@@ -424,6 +429,8 @@ def run(options: StartOptions) -> None:
     finally:
         if services is not None:
             services.stop()
+        # Saves refreshed rclone tokens to their blocks: needs Prefect (STO-20).
+        close_rclone_sessions()
         if prefect is not None:
             prefect.stop()
         if ctx is not None:
