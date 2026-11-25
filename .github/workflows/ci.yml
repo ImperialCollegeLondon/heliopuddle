@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  # run the checks on any branch by hand (Actions -> CI -> Run workflow)
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
