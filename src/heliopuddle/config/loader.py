@@ -140,6 +140,8 @@ def load_project(path: Path) -> ProjectConfig:
 
     ``${VAR}`` and ``${VAR:-default}`` are expanded in each storage location's
     ``url`` and in every string value (recursively) of its ``storage_options``.
+    ``{{ prefect.blocks.secret.<name> }}`` placeholders there are only checked
+    for syntax; they are resolved when the storage location is used (STO-18).
 
     Args:
         path: the YAML file.
@@ -149,8 +151,8 @@ def load_project(path: Path) -> ProjectConfig:
 
     Raises:
         ConfigError: on an unreadable file, invalid YAML, schema errors or an
-            unset environment variable. The message names the file, the
-            field and, for a rule, the rule's name.
+            unset environment variable or a malformed placeholder. The message
+            names the file, the field and, for a rule, the rule's name.
     """
     path = Path(path)
     try:
@@ -168,9 +170,12 @@ def load_project(path: Path) -> ProjectConfig:
     except _UnsetVariable as e:
         raise ConfigError(f"{path}: {e}") from None
     try:
-        return ProjectConfig.model_validate(data)
+        project = ProjectConfig.model_validate(data)
     except ValidationError as e:
         raise ConfigError(_format_validation_error(path, e, data)) from None
+    for index, location in enumerate(project.storage_locations):
+        location.set_origin(f"{path}: storage_locations.{index}")
+    return project
 
 
 def project_files(config_dir: Path) -> list[Path]:

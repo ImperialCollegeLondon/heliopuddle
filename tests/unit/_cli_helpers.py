@@ -65,6 +65,7 @@ class FakeRuntime:
     contexts: list[Any] = field(default_factory=list)
     prepared: list[Any] = field(default_factory=list)
     adopted: list[Any] = field(default_factory=list)
+    events: list[str] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -75,6 +76,7 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeRuntime:
     class Runtime:
         def stop(self) -> None:
             rec.prefect_stopped += 1
+            rec.events.append("prefect.stop")
 
     def fake_start_prefect(settings: Any) -> Runtime:
         rec.prefect_started += 1
@@ -89,6 +91,7 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeRuntime:
 
         def stop(self) -> None:
             rec.services_stopped += 1
+            rec.events.append("services.stop")
 
         def is_alive(self) -> bool:
             return True
@@ -111,6 +114,13 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeRuntime:
     monkeypatch.setattr(start_mod, "reconcile_rule_services", lambda ctx: None)
     monkeypatch.setattr(
         start_mod, "submit_adoption_runs", lambda ctx, deps: rec.adopted.append(deps)
+    )
+    monkeypatch.setattr(start_mod, "install_rclone", lambda settings: None)
+    monkeypatch.setattr(
+        start_mod, "register_rclone_block_type", lambda: rec.events.append("rclone.register")
+    )
+    monkeypatch.setattr(
+        start_mod, "close_rclone_sessions", lambda: rec.events.append("rclone.close")
     )
     monkeypatch.setattr(start_mod, "run_servers", fake_run_servers)
     monkeypatch.setattr(start_mod, "wait_for_shutdown", fake_wait)

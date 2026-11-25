@@ -13,6 +13,8 @@ project files it writes and loads a `default` project instead (see the
   storage location's `url` and in every string of its `storage_options`. Use it
   for secrets and machine-specific paths. An unset variable with no default is
   an error.
+- Secrets can also come from Prefect: see
+  [credentials from Prefect blocks](#credentials-from-prefect-blocks).
 - **Durations** are `<number><unit>` parts: `s`, `m` (minutes), `h`, `d`, `w`,
   `mo` (30 days) and `y` (365 days), such as `30d`, `1h30m` or `1y6mo`.
 - **Sizes** are bytes or a string with decimal (`500MB`, `2GB`) or binary
@@ -47,11 +49,50 @@ SFTP, S3, Azure Blob and GCS (install the matching extra).
 | Option | Type | Default | Meaning |
 |---|---|---|---|
 | `name` | name | required | Used by rules, the API and the UI. Unique in the project. |
-| `url` | string | required | fsspec URL of the root, such as `file:///data` or `s3://bucket/prefix`. |
-| `storage_options` | mapping | `{}` | Passed straight to fsspec (credentials and so on). |
+| `url` | string | required (or `block`) | fsspec URL of the root, such as `file:///data` or `s3://bucket/prefix`. May hold `{{ prefect.blocks.secret.<name> }}`. |
+| `block` | Prefect block name | none | A Prefect `RemoteFileSystem` block to use instead of `url`: its `basepath` is the URL and its `settings` the storage options. Set `url` or `block`, not both. |
+| `storage_options` | mapping, or one placeholder | `{}` | Passed to fsspec (credentials and so on), merged over the block's settings. Any string may hold `{{ prefect.blocks.secret.<name> }}`; a single placeholder instead of the mapping supplies the whole mapping from a Secret block holding JSON. |
 | `accept_external_changes` | bool | `true` | Tolerate files changed in the store by something other than hp. |
 | `create_root` | `true`, `false` or `auto` | `auto` | Create a missing root. `auto` creates it except on object stores, whose bucket or container must already exist. |
 | `quota` | size | none | Cap on the indexed size of the location. Rules check it before copying or moving in. |
+
+### Credentials from Prefect blocks
+
+Secrets can be kept in Prefect instead of the YAML or the environment. Create
+the blocks in the Prefect UI (Blocks page) or in Python:
+
+```yaml
+storage_locations:
+  - name: archive
+    url: az://archive/data
+    storage_options:
+      account_name: myaccount
+      account_key: "{{ prefect.blocks.secret.archive-key }}"   # a Secret block
+  - name: offsite
+    url: s3://offsite/data
+    storage_options: "{{ prefect.blocks.secret.offsite-options }}"  # Secret holding a JSON mapping
+  - name: partner
+    block: partner-fs              # a RemoteFileSystem block: basepath and settings
+    storage_options:
+      anon: false                  # merged over the block's settings
+```
+
+- `{{ prefect.blocks.secret.<name> }}` is Prefect's own placeholder syntax.
+  Block names use lowercase letters, digits and dashes. The syntax is checked
+  at startup; the values are read when the storage location is used.
+- A value that is only the placeholder takes the secret's JSON object or array
+  when it holds one; otherwise its text. Placeholders inside a longer string
+  are replaced by the secret's text.
+- Prefect stores a `RemoteFileSystem` block's settings as plain text: keep
+  secrets in Secret blocks and reference them from the settings with
+  placeholders.
+- A missing block never stops the server. The storage location is
+  **incomplete**: startup skips its root check with a warning, runs and API
+  calls that need it fail with a message naming the file, field and block,
+  and the storage pages show a warning with a link to Prefect's blocks page.
+  Blocks are cached for 60 seconds, so a block you create starts working
+  within a minute, without a restart.
+- Resolved secrets are hidden in logs and error messages.
 
 ## Index
 

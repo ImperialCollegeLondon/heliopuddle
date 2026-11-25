@@ -38,6 +38,7 @@
       </div>
     </div>
     {{ m.notice(notice) }}
+    {{ m.incomplete(sl) }}
 
     {% if s %}
     {%- set busy = s.states.get('pending', 0) + s.states.get('overwriting', 0) + s.states.get('deleting', 0) -%}

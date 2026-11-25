@@ -17,6 +17,7 @@ from heliopuddle.server.api.deps import (
 from heliopuddle.server.auth.roles import ROLE_READER
 from heliopuddle.server.services.content import open_file_content
 from heliopuddle.storage.hashing import CHUNK_SIZE
+from heliopuddle.storage.rclone import RcloneBusyError
 
 router = APIRouter()
 
@@ -38,6 +39,8 @@ def file_content(file_id: int, ctx: Ctx) -> StreamingResponse:
         stream, first = open_file_content.fn(file_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="file content not found") from None
+    except RcloneBusyError:
+        raise  # the global handler answers 503 with Retry-After
     except OSError as error:
         logger.error("API file content read failed (%s)", type(error).__name__)
         raise HTTPException(status_code=503, detail="backing storage read failed") from None

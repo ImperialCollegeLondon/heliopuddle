@@ -18,7 +18,7 @@ Status key: **planned**, **in review**, **building**, **paused**, **done**.
 | M5A | Auth | done |
 | M6 | UI redesign and cross-project search | done |
 | M6A | Number and text versions; rule ages; alpha hardening | done (alpha-readiness additions in PR) |
-| M7 | Sync targets: SFTP and rclone | planned |
+| M7 | Storage locations: SFTP, credentials and rclone | in review |
 | M8 | File analysis and pipelines | planned |
 | M9 | Post-ingest jobs | planned |
 
@@ -513,12 +513,55 @@ End-to-end checks:
    `archive` to `primary` rule with `arrived: {older_than: 1d}` leaves the
    file in `archive`; the one-off form accepts every age field.
 
-## M7: Sync targets: SFTP and rclone
+## M7: Storage locations: SFTP, credentials and rclone
 
-- SFTP (paramiko) and rclone (bundled binary; SharePoint, OneDrive, Box;
-  token write-back) as secondary storage locations.
-- `mirror` rules sync a subset of files from the main storage location, including
-  deletes.
+**Goal:** SFTP is proven as an fsspec storage location; storage credentials
+can come from the config, the environment or Prefect blocks; and rclone
+remotes (SharePoint, OneDrive, Box, ...) are storage locations through a new
+`rclone://` fsspec backend. Mirror rules are dropped: the existing copy, move
+and delete rules already sync a subset of files, including deletes.
+Requirements: STO-05 (rewritten), STO-17, STO-18, STO-19, STO-20, STO-21,
+STO-22, DEP-08 (amended), DEP-21, DEP-22, plus every earlier milestone
+requirement.
+Approved plan: [reviews/m7-plan.md](reviews/m7-plan.md). Design:
+[storage](../design/storage.md#credentials).
+
+In scope:
+
+- SFTP through fsspec only (no paramiko-specific code), tested against a real
+  SFTP server container.
+- Credentials inline, from `${VAR}` or a backend's own environment variables,
+  from Prefect Secret blocks (`{{ prefect.blocks.secret.<name> }}`) or from a
+  Prefect `RemoteFileSystem` block (`block: <name>`). Blocks resolve lazily; a
+  missing block marks the storage location `incomplete` (API `status` and
+  `problems`, UI warning) and never stops startup.
+- `rclone://<remote>/<path>` storage locations over a local `rclone rcd`:
+  config in a prefect-managedfiletransfer `RCloneConfigFileBlock` (or a
+  file) with refreshed tokens saved back; one rcd per config across the
+  cluster (Prefect global concurrency limit `rclone:<config>`); rcd on a
+  private Unix socket with per-session credentials; native-hash verify
+  (`verify: auto | native | content | size`); the binary bundled in the image
+  and otherwise downloaded at a pinned version with pinned hashes.
+- An rclone storage location is never a project's first storage location
+  and is never accessed directly by clients.
+
+Out of scope: rclone as the first storage location (see
+[later](requirements/later.md)), an rcd service shared over the network,
+Prefect integration credential blocks (prefect-aws, prefect-azure,
+prefect-gcp), real Box or SharePoint in CI.
+
+End-to-end checks:
+
+1. The conformance suite passes on SFTP (container) and on rclone over WebDAV
+   (container).
+2. `server start` with an `rclone://` location whose config block does not
+   exist starts; the UI shows the warning; creating the block makes the
+   storage location usable without a restart.
+3. A copy rule from the first storage location to an rclone location and back
+   verifies by native hash.
+4. A refreshed OAuth token (a fake local token endpoint) is saved to the block.
+5. Two service processes never run an rcd on the same config at once.
+6. `server start` with no rclone on PATH downloads the pinned binary.
 
 ## M8: File analysis and pipelines
 
@@ -677,3 +720,20 @@ in [operations](../design/operations.md).
 | U17 | Test harness | An in-memory fake client in `heliopuddle.testing` (client install only) plus a `pytest11` plugin; fidelity is guarded by one contract test suite run against both the fake and the real API rather than by mocking HTTP |
 | U18 | File CLI | `heliopuddle file ...` over the client only (no DB access, like `heliopuddle user`); a `cli` extra (`typer`) so it installs without the server. Files are chosen by id (a number is always an id) or by `--path`/`--name` globs, so a numeric path is never mistaken for an id. The version is not settable: it comes from the path (API-02) |
 | U19 | Client floors | Old, tested lower bounds for the client's packages, so applications with older pins can install it; `tests/client` runs at the floors in CI. Elsewhere bounds are loose and the lockfile is what tracks current releases (DEP-09 amended) |
+
+## M7 review decisions
+
+| # | Topic | Decision |
+|---|---|---|
+| K1 | SFTP | Already supported through fsspec's `sftp://` (paramiko is only its dependency); M7 adds a real-server conformance test and docs, no SFTP code |
+| K2 | Mirror rules | Dropped: the existing copy, move and delete rules cover them |
+| K3 | Credentials | Inline, `${VAR}` and backend-native env vars, Prefect Secret blocks via `{{ prefect.blocks.secret.<name> }}`, and Prefect `RemoteFileSystem` blocks via `block:` |
+| K4 | Missing blocks | Never block startup (the user needs the server running to create them): the storage location is `incomplete`, the API and UI show why, and blocks resolve lazily (60s cache) so no restart is needed |
+| K5 | rclone shape | A new fsspec backend `rclone://`, not a separate storage-location type; hp's own thin client over `rclone rcd` (existing packages buffer whole files or are unmaintained) |
+| K6 | rclone config | The prefect-managedfiletransfer `RCloneConfigFileBlock` pattern (or a file): written to a private temp config per session, saved back afterwards even after a failure |
+| K7 | Single rcd | One rcd per rclone config across the cluster, enforced by a Prefect global concurrency limit `rclone:<config>`; normally one per project; started locally where and when needed, never a shared rcd container |
+| K8 | rcd security | Unix socket in a private directory, random per-session credentials, no GUI or metrics, an allowlist of rc endpoints, killed with hp |
+| K9 | Verify | `verify: auto` (default): the provider's own hash (Box SHA1, OneDrive QuickXorHash) compared with the same hash of the local spool; content read-back when the provider has none. Amends STO-03 for rclone |
+| K10 | Tests | No real Box or SharePoint: rclone over a WebDAV container, plus a fake local OAuth token endpoint for token write-back (rclone runs on the same machine, so no container is needed) |
+| K11 | Binary | Bundled in the image; otherwise downloaded at a pinned version with pinned SHA256s (`HELIOPUDDLE_RCLONE_AUTO_DOWNLOAD`) |
+| K12 | First storage location | rclone cannot be a project's first storage location in M7 (lock contention on interactive requests, SharePoint changing Office files); revisit later |

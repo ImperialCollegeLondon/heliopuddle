@@ -108,7 +108,7 @@ class IndexRun:
                     self.loc.storage_location_id,
                     self.mode,
                     self.checkpoint,
-                    expected_url=self.loc.config.url,
+                    expected_url=self.loc.config.display_url,
                 )
 
     def batch_size(self) -> int:

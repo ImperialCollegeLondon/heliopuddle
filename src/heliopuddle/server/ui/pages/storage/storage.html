@@ -8,6 +8,7 @@
     <span class="sub">Where this project's files live. Configured in YAML; index runs are live.</span>
   </div>
 </div>
+{% for i in items %}{{ m.incomplete(i.read) }}{% endfor %}
 {% if items %}
 <section class="sl-grid" aria-label="Storage locations">
   {% for i in items %}
@@ -20,7 +21,7 @@
         <span class="sl-name">{{ sl.name }}</span>
         <span class="mono sl-url">{{ sl.url or "Restricted" }}</span>
       </span>
-      {% if sl.active %}<span class="pill st-available">active</span>{% else %}<span class="pill st-none">inactive</span>{% endif %}
+      {% if sl.status == "incomplete" %}<span class="pill st-missing">incomplete</span>{% elif sl.active %}<span class="pill st-available">active</span>{% else %}<span class="pill st-none">inactive</span>{% endif %}
     </a>
     {% if s %}
     <div class="figures">

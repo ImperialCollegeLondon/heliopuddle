@@ -20,7 +20,7 @@ project, chosen in the header's project switcher.
 | Download | `/projects/{p}/files/{id}/download` | Streams the file's content through `client.open()`. |
 | File | `/projects/{p}/files/{id}` | The full file page: badges, actions, copies, details, a content preview ([preview](preview.md)), version history, metadata. |
 | Preview | `/projects/{p}/files/{id}/preview`, `/projects/{p}/files/{id}/raw` | The preview as an HTML fragment (loaded after the page with JavaScript; without it the file page's "Show preview" link renders it in the page with `?preview=1`), and an image's bytes for `<img>`. |
-| Storage | `/projects/{p}/storage`, `/projects/{p}/storage/{name}` | Storage-location list and a page per storage location: config, index times and buttons, copy-state bar, rules touching it. |
+| Storage | `/projects/{p}/storage`, `/projects/{p}/storage/{name}` | Storage-location list and a page per storage location: config, index times and buttons, copy-state bar, rules touching it. An incomplete storage location (STO-18) gets a warning banner on both pages listing its problems, with a link to Prefect's `/blocks` page when the Prefect UI URL is known (plain HTML, no JavaScript). |
 | Rules | `/projects/{p}/rules` | Data-flow diagram, rules table with enable/disable and Run (each row shows the complete selection and options, wrapped, never truncated), one-off run form. |
 | Search | `/search?q=&project=` | Search results grouped by project (API-16). |
 | Login, error | `/login`, error pages | As in M5A. |

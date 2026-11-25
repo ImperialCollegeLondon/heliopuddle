@@ -28,8 +28,8 @@ is a general-purpose tool.
 - **Projects and storage locations.** A project is a set of files stored in one or more
   storage locations. The first storage location of every project is an
   [fsspec](https://filesystem-spec.readthedocs.io/) filesystem (local disk,
-  network share, Azure Blob, S3, ...). SFTP and rclone targets (SharePoint,
-  OneDrive, Box, ...) can be added later as sync targets for a subset of files.
+  network share, SFTP, Azure Blob, S3, ...). Further storage locations can be
+  any fsspec filesystem or an rclone remote (SharePoint, OneDrive, Box, ...).
 - **A DB index of every copy.** Each logical file has one row, with a hash,
   size, version and metadata, plus one row per copy in each storage location with its
   state (`pending`, `available`, `missing`, `deleting`, `deleted`, `unknown`).
@@ -56,7 +56,8 @@ is a general-purpose tool.
 
 Any [fsspec](https://filesystem-spec.readthedocs.io/) backend can be a storage
 location. Local disks, SMB shares, SFTP, S3, Azure Blob and Google Cloud
-Storage are supported out of the box:
+Storage are supported out of the box, and rclone remotes (SharePoint,
+OneDrive, Box, ...) through the `rclone://` backend:
 
 Default install `heliopuddle` is small and contains only the client library
 for interacting with a server instance. Add optional pip dependencies

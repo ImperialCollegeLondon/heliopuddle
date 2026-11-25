@@ -44,9 +44,9 @@ def sync_config(session: Session, projects: Mapping[str, ProjectConfig]) -> None
             if row is None:
                 row = StorageLocation(project_id=project.id, name=loc_cfg.name)
                 session.add(row)
-            elif row.url.rstrip("/") != loc_cfg.url.rstrip("/"):
-                _url_changed(session, row, name, loc_cfg.url)
-            row.url = loc_cfg.url
+            elif row.url.rstrip("/") != loc_cfg.display_url.rstrip("/"):
+                _url_changed(session, row, name, loc_cfg.display_url)
+            row.url = loc_cfg.display_url
             row.accept_external_changes = loc_cfg.accept_external_changes
             row.active = True
         for loc_name, row in existing.items():
@@ -57,6 +57,26 @@ def sync_config(session: Session, projects: Mapping[str, ProjectConfig]) -> None
 
 def _url_changed(session: Session, row: StorageLocation, project: str, new_url: str) -> None:
     """Treat a storage location's new URL as "the disk moved, with its data" (SVC-12)."""
+    storage_location_moved(session, row, project, row.url, new_url)
+
+
+def storage_location_moved(
+    session: Session, row: StorageLocation, project: str, old: str, new: str
+) -> None:
+    """Reset a storage location whose root moved from ``old`` to ``new`` (SVC-12, STO-19).
+
+    Used for a changed configured ``url`` and for a block-configured storage
+    location whose resolved root changed. Copies become pending re-check
+    (hash and size kept, observations cleared, generation bumped) and index
+    progress is dropped. ``old`` and ``new`` carry no credentials.
+
+    Args:
+        session: a session in a write transaction; the caller commits.
+        row: the storage location row.
+        project: project name, for the log.
+        old: the previous root, for the log.
+        new: the new root, for the log.
+    """
     from heliopuddle.server.models.index import reset_observations
 
     # Match the index checkpoint lock, without blocking new FK references on
@@ -71,8 +91,8 @@ def _url_changed(session: Session, row: StorageLocation, project: str, new_url: 
         "becomes available, different content unknown, absent copies deleted or missing.",
         row.name,
         project,
-        row.url,
-        new_url,
+        old,
+        new,
         count,
     )
 

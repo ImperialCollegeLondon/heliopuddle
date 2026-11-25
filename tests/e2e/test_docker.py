@@ -45,7 +45,7 @@ def test_client_add_from_host(
 # Each target protocol of STO-06 resolves to an importable fsspec class in the image.
 _RESOLVE_PROTOCOLS = """
 import fsspec
-for p in ("file", "smb", "sftp", "s3", "az", "abfs", "gs", "gcs"):
+for p in ("file", "smb", "sftp", "s3", "az", "abfs", "gs", "gcs", "rclone"):
     cls = fsspec.get_filesystem_class(p)
     print(p, cls.__module__ + "." + cls.__name__)
 """
@@ -55,10 +55,21 @@ for p in ("file", "smb", "sftp", "s3", "az", "abfs", "gs", "gcs"):
 def test_image_resolves_every_target_protocol(hp_image: str) -> None:
     out = docker("run", "--rm", "--entrypoint", "python", hp_image, "-c", _RESOLVE_PROTOCOLS)
     resolved = dict(line.split(" ", 1) for line in out.splitlines())
-    assert sorted(resolved) == sorted(["file", "smb", "sftp", "s3", "az", "abfs", "gs", "gcs"])
+    assert sorted(resolved) == sorted(
+        ["file", "smb", "sftp", "s3", "az", "abfs", "gs", "gcs", "rclone"]
+    )
+    assert resolved["rclone"] == "heliopuddle.storage.rclone.fs.RcloneFileSystem"
 
 
-@pytest.mark.req("DEP-16")
+@pytest.mark.req("DEP-21")
+def test_image_has_the_pinned_rclone(hp_image: str) -> None:
+    from heliopuddle.storage.rclone.binary import RCLONE_VERSION
+
+    out = docker("run", "--rm", "--entrypoint", "rclone", hp_image, "version")
+    assert out.startswith(f"rclone v{RCLONE_VERSION}")
+
+
+@pytest.mark.req("DEP-16", "DEP-21")
 def test_image_has_no_test_tooling_or_test_files(hp_image: str) -> None:
     """The public image is the e2e image: it must carry nothing used only for testing."""
     import subprocess

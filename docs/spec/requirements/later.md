@@ -13,3 +13,7 @@ in the UI.
 tables; a retention job deletes rows older than a configured age.
 
 **ING-02 (M9)** A flow can be triggered when another flow completes.
+
+**STO-L1 (later)** An rclone storage location as a project's first storage
+location. Needs: interactive requests not queued behind rule batches on the
+config lock, and a plan for SharePoint changing uploaded Office files.

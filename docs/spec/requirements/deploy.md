@@ -46,9 +46,9 @@ expressions parse, `batch_size >= 1`, durations parse, and
 stops startup naming the file and field.
 *Verify:* unit tests.
 
-**DEP-08 (M3)** The optional extras `heliopuddle[s3]` (s3fs),
+**DEP-08 (M3, amended M7)** The optional extras `heliopuddle[s3]` (s3fs),
 `heliopuddle[azure]` (adlfs), `heliopuddle[gcs]` (gcsfs), `heliopuddle[sftp]`
-(paramiko, for fsspec's `sftp://`), `heliopuddle[smb]` (smbprotocol, for
+(paramiko: fsspec's own SFTP dependency; hp has no SFTP code), `heliopuddle[smb]` (smbprotocol, for
 fsspec's `smb://`) and `heliopuddle[all]` exist; the Docker image installs
 `all`, and every target protocol resolves inside the image.
 *Verify:* unit test of the extras and protocols; e2e check running Python in
@@ -197,3 +197,24 @@ publish it as `127.0.0.1:4200:4200`, and the deployment doc and README warn that
 it must not be exposed publicly (use an authenticating reverse proxy for remote
 access).
 *Verify:* a unit test of the compose files and docs.
+
+**DEP-21 (M7)** **The rclone binary.** The Docker image contains a pinned
+rclone release (checksum verified at build). Elsewhere hp uses
+`HELIOPUDDLE_RCLONE_BINARY`, then `rclone` on `PATH`; if neither exists and an
+rclone storage location is used, hp downloads the pinned release for this OS
+and architecture from `downloads.rclone.org` into
+`<data dir>/bin/rclone-<version>/`, checking its SHA256 against hashes pinned
+in hp (`HELIOPUDDLE_RCLONE_AUTO_DOWNLOAD`, default true, turns this off). A
+failed download marks the rclone storage locations `incomplete`; it never
+stops startup.
+*Verify:* unit tests against a local HTTP server serving a fake archive
+(good hash, bad hash, disabled, PATH preferred); e2e check of `rclone version`
+in the image.
+
+**DEP-22 (M7)** **Storage documentation.** The user docs have a storage page
+with a worked example for each backend (local, SMB, SFTP, S3, Azure, GCS,
+rclone with SharePoint and Box), every credential route (inline, `${VAR}`,
+backend environment variables, Prefect Secret and RemoteFileSystem blocks,
+rclone config blocks), the one-rcd-per-config model and its throughput
+limit, verify modes and known provider limits.
+*Verify:* `mkdocs build --strict`; the environment variable table test.

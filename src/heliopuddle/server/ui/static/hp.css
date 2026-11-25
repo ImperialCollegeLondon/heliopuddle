@@ -441,6 +441,9 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .page-wide > .notice { margin: 12px var(--gutter) 0; }
 .error { color: var(--missing-fg); }
 .alert { padding: 10px 14px; border-radius: 10px; background: var(--missing-bg); }
+.sl-incomplete { color: var(--missing-fg); font-size: 13.5px; margin-bottom: 12px; }
+.sl-incomplete a { font-weight: 600; }
+.sl-problems { margin: 6px 0; padding-left: 18px; }
 
 /* --- home ----------------------------------------------------------------------------- */
 

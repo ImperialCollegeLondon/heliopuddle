@@ -86,7 +86,10 @@ def test_unset_env_in_url_names_field(tmp_path: Path, monkeypatch: pytest.Monkey
         ("- just\n- a list\n", "expected a mapping"),
         ("project: p\n", "storage_locations"),
         ("project: p\nstorage_locations: []\n", "storage_locations"),
-        ("project: p\nstorage_locations:\n  - name: a\n", "storage_locations.0.url"),
+        (
+            "project: p\nstorage_locations:\n  - name: a\n",
+            "storage_locations.0: Value error, storage location 'a': set exactly one of url",
+        ),
         ("project: 'bad name'\nstorage_locations:\n  - {name: a, url: 'file:///x'}\n", "project"),
         (
             "project: p\nstorage_locations:\n  - {name: a, url: 'file:///x'}\n"

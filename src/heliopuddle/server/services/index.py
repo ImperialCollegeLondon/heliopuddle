@@ -243,7 +243,11 @@ def _index(
             watermark -= loc.project.index.settle_time
         with ctx.write_session() as session:
             index_db.record_index_progress(
-                session, loc.storage_location_id, mode, watermark, expected_url=loc.config.url
+                session,
+                loc.storage_location_id,
+                mode,
+                watermark,
+                expected_url=loc.config.display_url,
             )
         if mode == "full":
             # A finished full chain may have added many rows: let SQLite plan with them.

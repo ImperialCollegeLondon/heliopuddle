@@ -226,9 +226,18 @@ class ClientBase:
         return StorageLocationDetail.model_validate(row)
 
     def _transfer_location(self, name: str | None = None) -> StorageLocationDetail | None:
+        """The storage location for direct access, or None to transfer through the API.
+
+        An incomplete storage location (a Prefect block is missing, STO-18) goes
+        through the API too, which answers ``409 storage_location_incomplete``,
+        and so does one only the server reaches (``direct_access: false``, rclone).
+        """
         try:
-            return self.get_storage_location(name)
+            location = self.get_storage_location(name)
         except PermissionDeniedError as error:
             if "hp-client-storage-read-write" not in error.required_roles:
                 raise
             return None
+        if location.status == "incomplete" or not location.direct_access:
+            return None
+        return location

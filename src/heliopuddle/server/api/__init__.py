@@ -21,8 +21,12 @@ from heliopuddle.server.api import (
     users,
 )
 from heliopuddle.server.api.deps import install_auth_handlers
-from heliopuddle.server.api.errors import install_validation_scrub
-from heliopuddle.server.context import AppContext, set_context
+from heliopuddle.server.api.errors import (
+    install_rclone_busy,
+    install_storage_location_incomplete,
+    install_validation_scrub,
+)
+from heliopuddle.server.context import AppContext, get_context, set_context
 from heliopuddle.server.security_headers import SecurityHeadersMiddleware
 
 
@@ -45,6 +49,10 @@ def create_api(ctx: AppContext | None = None) -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
     install_auth_handlers(app)
     install_validation_scrub(app)
+    install_storage_location_incomplete(app)
+    install_rclone_busy(
+        app, lambda: (ctx or get_context()).settings.rclone_api_wait.total_seconds()
+    )
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(projects.router)

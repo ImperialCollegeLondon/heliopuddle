@@ -168,7 +168,7 @@ handling and `StartupError` are in `server/serving.py`) runs, in one process:
    storage locations from config into the DB, check every storage location
    root and create it where `create_root` allows (exit 2 naming the project,
    storage location and URL if it is missing and cannot be created; STO-08),
-   and install the context (`set_context`). Absolute config dir, data dir and database URL are put in
+   except storage locations that use Prefect blocks (step 3), and install the context (`set_context`). Absolute config dir, data dir and database URL are put in
    the environment so flow-run child processes see the same ones.
    (`heliopuddle db upgrade` runs only the migrations and exits.)
 3. Prefect (`server/services/runtime.py`, skipped for a UI-only process):
@@ -179,6 +179,10 @@ handling and `StartupError` are in `server/serving.py`) runs, in one process:
      `{DATA_DIR}/prefect` and its log in `{DATA_DIR}/prefect/server.log`; wait
      for `/health`; set `PREFECT_API_URL` in the environment and refresh
      Prefect's process-wide settings so every thread and child process uses it.
+   - install the Prefect block resolver (`server/services/blocks.py`) and
+     check the roots of storage locations that use Prefect blocks; an
+     incomplete one is skipped with a warning (STO-18). Flow-run processes
+     install the resolver when they build their context (`get_context`).
 4. Unless `--no-services`: build the deployments (`server/services/deploy.py`)
    and serve them with a Prefect `Runner` (what `prefect.serve()` uses) in a
    background thread with its own event loop. Startup waits until the
@@ -216,8 +220,10 @@ handling and `StartupError` are in `server/serving.py`) runs, in one process:
   deployment (the services have not registered it) or an unreachable Prefect
   gives `503` with the deployment name in the message.
 - **Global limits:** `hp_concurrency(name)` wraps Prefect's
-  `concurrency()` context manager; names are `storage-location:<project>:<name>` and
-  `rule:<project>:<name>` (Prefect limit names cannot contain `/`). Deployments whose runs must not overlap use
+  `concurrency()` context manager; names are `storage-location:<project>:<name>`,
+  `rule:<project>:<name>` and `rclone:<config>` (one rcd per rclone config,
+  see [storage](storage.md#sessions-one-rcd-per-config-started-locally))
+  (Prefect limit names cannot contain `/`). Deployments whose runs must not overlap use
   `concurrency_limit=1`. `hp_concurrency(..., wait=False)` tries once and
   raises `ConcurrencyBusyError` if the limit is full (the incremental index
   uses it to skip a run). `ensure_concurrency_limit(name)` creates a missing

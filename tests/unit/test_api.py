@@ -122,6 +122,9 @@ def test_storage_locations_list_and_detail(client: TestClient, store: Path) -> N
         "last_full_index_at": None,
         "last_incremental_index_at": None,
         "quota": None,
+        "status": "ok",
+        "problems": [],
+        "direct_access": True,
     }
     assert r.json()[1]["accept_external_changes"] is False
     assert "temp_writes" not in r.json()[1]  # removed (F10)

@@ -37,6 +37,7 @@ from heliopuddle.server.schemas.preview import (
 from heliopuddle.server.schemas.projects import (
     ProjectRead,
     StorageLocationDetail,
+    StorageLocationIncompleteError,
     StorageLocationRead,
 )
 from heliopuddle.server.schemas.reconcile import (
@@ -106,6 +107,7 @@ __all__ = [
     "SearchResults",
     "SeriesVersions",
     "StorageLocationDetail",
+    "StorageLocationIncompleteError",
     "StorageLocationRead",
     "StorageLocationSummary",
     "TokenResponse",

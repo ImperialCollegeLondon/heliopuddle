@@ -126,8 +126,110 @@ quoted in them. Credentials belong in `storage_options` (`${ENV}`).
 *Verify:* unit tests of `redact_url`, `redact_text`, the root-missing error and the
 startup error.
 
-**STO-05 (M7)** SFTP and rclone sync targets mirror a subset of files,
-including deletes, using the bundled rclone binary, and write refreshed
-tokens back to their config.
-*Verify:* integration tests with an SFTP container and rclone's local/memory
-backend.
+**STO-05 (M7)** **rclone storage locations.** `rclone://<remote>/<path>`
+is an fsspec backend (`heliopuddle.storage.rclone`) over a local `rclone rcd`
+(STO-20). Reads stream with HTTP Range from `--rc-serve`. Writes spool to a
+local file (computing md5) and commit with `operations/copyfile` from the
+spool, so a failing source never reaches the remote. `mv` replaces an existing
+destination. Free space comes from `operations/about` when the backend
+reports it, otherwise it is unknown (the storage-location `quota` applies).
+Each rclone storage location has `verify: auto | native | content | size`
+(default `auto`): `native` compares the provider's own hash of the stored
+object (`operations/stat` with hashes) with the same hash of the local spool
+(`operations/hashsum`); `content` reads the destination back (md5); `size`
+compares sizes; `auto` is `native` when the backend reports a hash and
+`content` otherwise. A provider-computed hash of the stored bytes counts as
+verifying the destination hash (STO-03). An rclone storage location cannot be
+a project's first storage location (a literal URL is a config error; a block
+or Secret that resolves to one makes the storage location incomplete) and is
+never accessed directly by clients (`direct_access: false` in the API, decided
+from the resolved URL and `false` while it cannot be resolved).
+*Verify:* the STO-07 conformance suite through rclone's webdav backend against
+a WebDAV container (integration); unit tests against a fake rc server for
+spool, abort, verify modes, `about` fallbacks and errors.
+
+**STO-17 (M7)** **SFTP through fsspec.** `sftp://` storage locations use
+fsspec's `SFTPFileSystem` with no SFTP-specific code beyond the tables in
+`storage/backends.py`.
+*Verify:* the STO-07 conformance suite against an OpenSSH server container
+(integration), plus replacing moves (`posix-rename`), `statvfs` free space, `create_root:
+auto` creating the root, and key and password authentication.
+
+**STO-18 (M7)** **Credentials from config, environment or Prefect.** In a
+storage location's `url` and every string of its `storage_options`:
+literal values, `${VAR}`/`${VAR:-default}` (resolved at load; an unset
+variable stops startup, as before), and `{{ prefect.blocks.secret.<name> }}`
+(a Prefect Secret block). A value that is only the placeholder takes the
+secret's JSON value when it holds JSON (so a whole `storage_options` mapping
+can come from one block). Blocks are resolved lazily when a storage location
+is used and cached for 60s, so a block created after startup works without a
+restart. A missing block, or Prefect being unreachable, never stops startup:
+the storage location is `incomplete`, the startup root check skips it with a
+warning, runs that use it fail with a message naming the file, field and
+block, API calls that need it return `409 storage_location_incomplete`, the
+storage-locations API returns `status: incomplete` and `problems`, and the UI
+storage pages show a warning. Resolved values are redacted like the URL
+(STO-16).
+*Verify:* unit tests with a fake block resolver (expansion, JSON, cache expiry,
+incomplete status, 409, UI warning); integration test on the Prefect harness:
+start without the block, see the warning, create it, use the storage location
+without a restart.
+
+**STO-19 (M7)** **Prefect RemoteFileSystem blocks.** `block: <name>` on a storage
+location loads a Prefect `RemoteFileSystem` block: `basepath` is the `url` and
+`settings` the `storage_options`. Inline `storage_options` are merged over the
+block's settings and placeholders are then expanded. `block` with `url` is a
+config error. A missing block marks the storage location `incomplete`
+(STO-18). When the root a block (or a whole-URL Secret) resolves to changes,
+even after startup, the storage location is reset as for a changed `url`
+(SVC-12): copies pending re-check, generations bumped, index progress
+dropped. The comparison uses the credential-free root stored in
+`storage_location.resolved_root`.
+*Verify:* unit tests with a fake resolver (including a moved root resetting the
+copies); integration test with a real block.
+
+**STO-20 (M7)** **One rcd per rclone config, started locally.** Every
+interaction with an rclone storage location runs inside an rclone session:
+hold one slot of the Prefect global concurrency limit `rclone:<config>`
+(limit 1; `<config>` is the config block name or `file:<first 12 hex of the sha256 of the absolute path>`, since limit names cannot contain `/`) for every
+config it uses, start `rclone rcd` on this machine with a private temp config
+assembled from those configs, use it, stop it, save changed config back and
+release. So across all processes and nodes only one rcd uses a given config
+at a time, and different configs (normally different projects) run in
+parallel. The config comes from `storage_options.config_block` (a
+prefect-managedfiletransfer `RCloneConfigFileBlock` document: `remote_name`,
+`config_file_contents`) or `storage_options.config_file`; after every session,
+including failed ones, a config whose contents changed (a refreshed token) is
+saved back to its block or file. Sessions are re-entrant within a process.
+A process can run several sessions at once, each over exactly the configs
+its caller asked for (unrelated configs are never merged); only a caller
+whose configs overlap an open session lacking some of them waits for that
+session to close. Flow tasks hold a session per batch; API requests wait at
+most `HELIOPUDDLE_RCLONE_API_WAIT` (default `30s`), one deadline for every
+wait (another session, the lock and rcd start), and then return `503` with
+`Retry-After`; a request that gives up never stops a session other callers
+use. A missing config block marks the storage location `incomplete`.
+*Verify:* unit tests (session lifecycle, write-back on failure, re-entrancy,
+config assembly, duplicate remote names, parallel sessions, one deadline);
+integration test with two processes
+on one external Prefect: rcd lifetimes on one config never overlap, on two
+configs they can.
+
+**STO-21 (M7)** **Token write-back with a real rclone.** An OAuth remote whose
+token has expired and whose `token_url` points at a fake local token endpoint
+is refreshed by rclone during a session, and the new token is in the config
+block after the session, even though the backend call itself fails.
+*Verify:* integration test with a fake local token endpoint, a Prefect block
+and the rclone binary.
+
+**STO-22 (M7)** **rcd is private.** rcd listens on a Unix socket in a 0700
+temp directory (loopback TCP only where Unix sockets are unavailable), always
+with a random per-session user and password, never with `--rc-no-auth`,
+`--rc-web-gui` or metrics. hp calls only an allowlist of rc endpoints
+(`operations/{list,stat,about,hashsum,copyfile,movefile,deletefile,mkdir,rmdir,purge}`,
+`config/listremotes`, `core/version`, `core/quit` and `--rc-serve` reads). The
+temp config is created 0600 and removed after the session. rcd is stopped
+with the session and killed if hp dies. rcd credentials and config contents
+never appear in logs, errors, the API or run parameters.
+*Verify:* unit tests (allowlist, redaction, file modes, kill on exit);
+integration test that a request without credentials gets `401`.

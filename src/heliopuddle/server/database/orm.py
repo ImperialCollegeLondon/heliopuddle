@@ -83,6 +83,9 @@ class StorageLocation(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"))
     name: Mapped[str] = mapped_column(String(255))
     url: Mapped[str] = mapped_column(String(2048))
+    # The credential-free root a block-configured storage location last resolved
+    # to (STO-19); a change means the data moved (SVC-12). NULL until resolved.
+    resolved_root: Mapped[str | None] = mapped_column(String(2048), nullable=True, default=None)
     accept_external_changes: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 

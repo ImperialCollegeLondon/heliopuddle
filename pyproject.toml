@@ -63,6 +63,10 @@ heliopuddle = "heliopuddle.cli_entry:main"
 [project.entry-points.pytest11]
 heliopuddle = "heliopuddle.pytest_plugin"
 
+# hp's own rclone:// filesystem (docs/design/storage.md, "rclone").
+[project.entry-points."fsspec.specs"]
+rclone = "heliopuddle.storage.rclone.fs:RcloneFileSystem"
+
 [dependency-groups]
 docs = ["mkdocs-material>=9.5.0"]
 dev = [
@@ -185,6 +189,12 @@ forbidden_modules = [
     "heliopuddle.server.models",
     "sqlalchemy",
 ]
+
+[[tool.importlinter.contracts]]
+name = "The rclone backend is a plain fsspec backend: no Prefect, no server (STO-05)"
+type = "forbidden"
+source_modules = ["heliopuddle.storage.rclone"]
+forbidden_modules = ["prefect", "heliopuddle.server", "heliopuddle.config"]
 
 [[tool.importlinter.contracts]]
 name = "UI reads only through the client (UI-05)"
