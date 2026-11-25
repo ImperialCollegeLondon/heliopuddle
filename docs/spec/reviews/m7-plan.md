@@ -237,7 +237,8 @@ Rules for using the session:
 Box reports SHA1 and OneDrive and SharePoint report QuickXorHash; neither
 reports MD5. Each rclone location has `verify: auto | native | content | size`,
 default `auto`. The test backend is also decided: a WebDAV container, plus a
-WireMock token endpoint for write-back.
+fake local token endpoint for write-back (built as a stdlib server: rclone runs
+on the same machine, so no container is needed).
 
 - **native.** After upload, compare the provider's server-computed hash
   (`operations/list` with `showHash`) with the same hash of the local spool,
@@ -323,7 +324,7 @@ verifying the destination hash.
 | STO-18 | **Credentials** come inline, from `${VAR}` or native environment variables, or from `{{ prefect.blocks.secret.<name> }}`, with whole-value JSON allowed. A missing block never stops startup: the location is `incomplete`, its runs and calls fail with a clear message, and the API (`status`, `problems`) and the UI show a warning. Blocks resolve lazily with a 60s cache, so no restart is needed after creating one. Values are redacted. |
 | STO-19 | **RemoteFileSystem block.** `block: <name>` supplies `url` and `storage_options`, with inline options merged over the block's. `block` together with `url` is a config error. |
 | STO-20 | **One rcd per rclone config, cluster-wide.** Every rclone interaction holds the Prefect global concurrency limit `rclone:<config block>` (limit 1) for each config it uses; different configs (normally different projects) run in parallel. rcd is started locally under the lock and stopped before release. The rclone config comes from `RCloneConfigFileBlock` documents (compatible with prefect-managedfiletransfer) or a file, and is saved back to its blocks after every session, including failed ones. API waits are bounded (`503` with `Retry-After`). Tested with two hp service processes, as on two nodes: rcd lifetimes never overlap. |
-| STO-21 | **Token write-back with a real rclone.** A onedrive remote with an expired token and `token_url` pointed at WireMock is refreshed by rclone, and the new token lands in the block. The API call afterwards fails, which is expected, and still triggers write-back. |
+| STO-21 | **Token write-back with a real rclone.** A onedrive remote with an expired token and `token_url` pointed at a fake local endpoint is refreshed by rclone, and the new token lands in the block. The API call afterwards fails, which is expected, and still triggers write-back. |
 | STO-22 | **rcd is private.** It listens on a Unix socket or loopback only, always with auth and per-session random credentials. It runs with no GUI or metrics, and hp calls only an allowlist of rc endpoints. rcd is killed with hp. rclone locations are never directly accessed by clients and cannot be a project's first storage location. Credentials and config contents are redacted. |
 | DEP-21 | **rclone binary.** It is bundled in the Docker image (checked by e2e). Elsewhere it is auto-downloaded at the pinned version with pinned SHA256 hashes, which can be turned off. A failure marks the location incomplete. |
 | DEP-22 | **User docs.** `docs/site/storage.md` covers each backend, the credential routes, the rclone block pattern, the single-rcd model and its throughput limit, Box and SharePoint notes, and verify modes. The environment variable table is regenerated. |
@@ -362,7 +363,7 @@ Removed: `mirror` rules, "SFTP (paramiko)", and the rcd sidecar/service.
      - Unit tests run against a fake rc server.
    - **Session and lock:** STO-20 and STO-22.
      - Tested with the Prefect test harness and two processes.
-   - **Write-back:** STO-21, using WireMock as in `tests/integration`.
+   - **Write-back:** STO-21, using a fake local token endpoint.
    - **Binary:** DEP-21, covering the Dockerfile and the auto-download.
      - Unit tests use a local HTTP server serving a fake zip with a pinned
        hash.
@@ -373,7 +374,7 @@ Removed: `mirror` rules, "SFTP (paramiko)", and the rcd sidecar/service.
 
 - **Suites.** `uv run pytest tests/unit -n auto --dist loadfile` and
   `uv run pytest tests/integration` (SFTP container, WebDAV container
-  through rcd, WireMock token endpoint, Prefect blocks and limits, Azurite).
+  through rcd, fake token endpoint, Prefect blocks and limits, Azurite).
   Coverage ≥ 90%, and `scripts/req_matrix.py` complete.
 - **Lint gates:** ruff, pyright, `lint-imports`, `check_file_length.py`,
   `pylint src` and `mkdocs build --strict`.

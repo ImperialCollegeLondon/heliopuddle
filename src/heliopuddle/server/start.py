@@ -49,6 +49,7 @@ from heliopuddle.server.services.deploy import (
     storage_location_ids,
     submit_adoption_runs,
 )
+from heliopuddle.server.services.rclone_hooks import install_rclone
 from heliopuddle.server.services.runtime import (
     PrefectRuntime,
     PrefectStartupError,
@@ -121,8 +122,9 @@ def ensure_storage_roots(ctx: AppContext, *, blocks: bool = False) -> None:
     """Check, and create where ``create_root`` allows, every storage location root (STO-08).
 
     Every storage location in the project config is active, so each one is
-    checked. Storage locations that use Prefect blocks (STO-18, STO-19) are
-    checked in a second pass (``blocks=True``) once Prefect is up; one that is
+    checked. Storage locations that need Prefect, for blocks (STO-18, STO-19)
+    or an rclone config lock (STO-20), are checked in a second pass
+    (``blocks=True``) once Prefect is up; one that is
     incomplete (a block is missing or Prefect cannot be reached) is skipped
     with a warning naming the problems, never a startup error.
 
@@ -137,7 +139,7 @@ def ensure_storage_roots(ctx: AppContext, *, blocks: bool = False) -> None:
     """
     for project in ctx.projects.values():
         for cfg in project.storage_locations:
-            if cfg.uses_blocks != blocks:
+            if cfg.needs_services != blocks:
                 continue
             try:
                 open_location(cfg).ensure_root()
@@ -384,8 +386,10 @@ def run(options: StartOptions) -> None:
                 prefect = start_prefect(settings)
             except PrefectStartupError as e:
                 raise StartupError(str(e)) from None
-            # Blocks resolve lazily through Prefect, so only now (STO-18, STO-19).
+            # Blocks resolve lazily through Prefect, so only now (STO-18, STO-19),
+            # and rclone sessions lock their config through it (STO-20).
             install_block_resolver()
+            install_rclone(settings)
             assert ctx is not None
             ensure_storage_roots(ctx, blocks=True)
         if shutdown.event.is_set():

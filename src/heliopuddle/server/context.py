@@ -113,16 +113,19 @@ def get_context() -> AppContext:
     """Return the process context, building it from settings on first use.
 
     Building it (as a flow-run process does) also installs the Prefect block
-    resolver, unless one is installed, so storage locations that use Prefect
-    blocks resolve there too (STO-18). Blocks are looked up lazily, on use.
+    resolver and the rclone hooks, unless they are installed, so storage
+    locations that use Prefect blocks or rclone work there too (STO-18,
+    STO-20). Blocks are looked up lazily, on use.
     """
     global _context
     with _lock:
         if _context is None:
             from heliopuddle.server.services.blocks import install_block_resolver
+            from heliopuddle.server.services.rclone_hooks import install_rclone
 
             _context = AppContext.from_settings()
             install_block_resolver(replace=False)
+            install_rclone(_context.settings, replace=False)
         return _context
 
 

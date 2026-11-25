@@ -297,7 +297,7 @@ makes the rclone storage locations incomplete.
 There is no emulator for Box or SharePoint. The conformance suite runs through
 rclone's `webdav` backend against a WebDAV server container (no md5 and no
 streamed upload, like OneDrive), and token write-back is tested with an OAuth
-remote whose `token_url` points at WireMock. Spike results (rclone v1.76.0):
+remote whose `token_url` points at a fake local token endpoint. Spike results (rclone v1.76.0):
 Unix-socket rc with httpx's UDS transport works and rejects requests without
 credentials (`401`); `operations/copyfile` from a local absolute path and
 `operations/hashsum` with `quickxor` or `sha1` on a local file work;

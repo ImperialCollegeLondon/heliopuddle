@@ -107,6 +107,22 @@ def is_object_store(protocols: str | tuple[str, ...] | list[str]) -> bool:
     return any(p.lower() in OBJECT_STORE_PROTOCOLS for p in _protocols(protocols))
 
 
+SERVER_ONLY_PROTOCOLS: frozenset[str] = frozenset({"rclone"})
+"""Backends only the server reaches (STO-05): never a project's first storage
+location, and clients transfer through the API (``direct_access: false``)."""
+
+
+def server_only(url: str | None) -> bool:
+    """Whether the storage location at ``url`` is reached only by the server.
+
+    Args:
+        url: the storage location URL (None for one not yet resolved).
+    """
+    if not url or "://" not in url:
+        return False
+    return url.split("://", 1)[0].lower() in SERVER_ONLY_PROTOCOLS
+
+
 NON_REPLACING_MOVE_PROTOCOLS: frozenset[str] = frozenset({"smb"})
 """Backends whose rename does not replace an existing destination.
 

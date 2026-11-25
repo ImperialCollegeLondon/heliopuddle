@@ -203,11 +203,11 @@ on one external Prefect: rcd lifetimes on one config never overlap, on two
 configs they can.
 
 **STO-21 (M7)** **Token write-back with a real rclone.** An OAuth remote whose
-token has expired and whose `token_url` points at a fake token endpoint
-(WireMock) is refreshed by rclone during a session, and the new token is in
-the config block after the session, even though the backend call itself
-fails.
-*Verify:* integration test with WireMock and the rclone binary.
+token has expired and whose `token_url` points at a fake local token endpoint
+is refreshed by rclone during a session, and the new token is in the config
+block after the session, even though the backend call itself fails.
+*Verify:* integration test with a fake local token endpoint, a Prefect block
+and the rclone binary.
 
 **STO-22 (M7)** **rcd is private.** rcd listens on a Unix socket in a 0700
 temp directory (loopback TCP only where Unix sockets are unavailable), always

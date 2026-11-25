@@ -25,6 +25,7 @@ from heliopuddle.config.placeholders import (
     is_whole_placeholder,
 )
 from heliopuddle.durations import Duration
+from heliopuddle.storage.backends import server_only
 
 
 class StorageLocationConfig(BaseModel):
@@ -103,6 +104,11 @@ class StorageLocationConfig(BaseModel):
     def uses_blocks(self) -> bool:
         """Whether resolving this storage location needs Prefect blocks."""
         return self.block is not None or has_placeholders(self.url, self.storage_options)
+
+    @property
+    def needs_services(self) -> bool:
+        """Whether using this storage location needs Prefect (blocks or a config lock)."""
+        return self.uses_blocks or server_only(self.url)
 
     @property
     def origin(self) -> str:
@@ -207,6 +213,11 @@ class ProjectConfig(BaseModel):
         dupes = sorted({n for n in names if names.count(n) > 1})
         if dupes:
             raise ValueError(f"duplicate storage location names: {', '.join(dupes)}")
+        if v and server_only(v[0].url):
+            raise ValueError(
+                f"the first storage location ({v[0].name!r}) receives uploads and cannot be an "
+                "rclone storage location; list it after another storage location (STO-05)"
+            )
         return v
 
     @field_validator("rules")

@@ -559,7 +559,7 @@ End-to-end checks:
    storage location usable without a restart.
 3. A copy rule from the first storage location to an rclone location and back
    verifies by native hash.
-4. A refreshed OAuth token (WireMock token endpoint) is saved to the block.
+4. A refreshed OAuth token (a fake local token endpoint) is saved to the block.
 5. Two service processes never run an rcd on the same config at once.
 6. `server start` with no rclone on PATH downloads the pinned binary.
 
@@ -734,6 +734,6 @@ in [operations](../design/operations.md).
 | K7 | Single rcd | One rcd per rclone config across the cluster, enforced by a Prefect global concurrency limit `rclone:<config>`; normally one per project; started locally where and when needed, never a shared rcd container |
 | K8 | rcd security | Unix socket in a private directory, random per-session credentials, no GUI or metrics, an allowlist of rc endpoints, killed with hp |
 | K9 | Verify | `verify: auto` (default): the provider's own hash (Box SHA1, OneDrive QuickXorHash) compared with the same hash of the local spool; content read-back when the provider has none. Amends STO-03 for rclone |
-| K10 | Tests | No real Box or SharePoint: rclone over a WebDAV container, plus a WireMock token endpoint for token write-back |
+| K10 | Tests | No real Box or SharePoint: rclone over a WebDAV container, plus a fake local OAuth token endpoint for token write-back (rclone runs on the same machine, so no container is needed) |
 | K11 | Binary | Bundled in the image; otherwise downloaded at a pinned version with pinned SHA256s (`HELIOPUDDLE_RCLONE_AUTO_DOWNLOAD`) |
 | K12 | First storage location | rclone cannot be a project's first storage location in M7 (lock contention on interactive requests, SharePoint changing Office files); revisit later |

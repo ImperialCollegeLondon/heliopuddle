@@ -142,6 +142,26 @@ class Settings(BaseSettings):
         "'1GiB'; bigger ones get 413 (API-23)",
     )
 
+    rclone_binary: str | None = Field(
+        default=None,
+        description="The rclone executable for rclone storage locations; default: rclone "
+        "on PATH, else the pinned release downloaded into <data dir>/bin (DEP-21)",
+    )
+    rclone_auto_download: bool = Field(
+        default=True,
+        description="Download the pinned rclone release when no rclone is found (DEP-21)",
+    )
+    rclone_api_wait: Duration = Field(
+        default=timedelta(seconds=30),
+        description="How long an API request waits for a busy rclone config before "
+        "answering 503 with Retry-After (STO-20)",
+    )
+    rclone_idle: Duration = Field(
+        default=timedelta(seconds=2),
+        description="How long an rclone session (and its rcd and config lock) stays "
+        "open after its last use (STO-20)",
+    )
+
     @field_validator("admin_password")
     @classmethod
     def _admin_password_length(cls, value: SecretStr | None) -> SecretStr | None:

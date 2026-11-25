@@ -39,6 +39,11 @@ class StorageLocationRead(BaseModel):
         description="incomplete: a Prefect block it needs is missing or cannot be loaded "
         "(STO-18); calls that need it return 409 storage_location_incomplete",
     )
+    direct_access: bool = Field(
+        default=True,
+        description="False for storage locations only the server reaches (rclone, STO-05): "
+        "clients transfer through the API",
+    )
     problems: list[str] = Field(
         default_factory=list, description="Why the storage location is incomplete"
     )

@@ -45,6 +45,10 @@ The tables below are generated from the settings models by
 | `HELIOPUDDLE_OP_LEASE` | `1h` | How long an upload, overwrite or delete owns a path before it expires and may be repaired (renew extends it) |
 | `HELIOPUDDLE_PREVIEW_MAX_BYTES` | `1GB` | The largest CDF copied to a temporary file to preview it from a storage location without local file paths |
 | `HELIOPUDDLE_MAX_UPLOAD_SIZE` | `1GiB` | The largest file a reservation or registration may declare, e.g. '1GiB'; bigger ones get 413 |
+| `HELIOPUDDLE_RCLONE_BINARY` |  | The rclone executable for rclone storage locations; default: rclone on PATH, else the pinned release downloaded into &lt;data dir&gt;/bin |
+| `HELIOPUDDLE_RCLONE_AUTO_DOWNLOAD` | `true` | Download the pinned rclone release when no rclone is found |
+| `HELIOPUDDLE_RCLONE_API_WAIT` | `30s` | How long an API request waits for a busy rclone config before answering 503 with Retry-After |
+| `HELIOPUDDLE_RCLONE_IDLE` | `2s` | How long an rclone session (and its rcd and config lock) stays open after its last use |
 
 ### Client and CLI
 

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from heliopuddle.config import ProjectConfig, StorageLocationConfig
 from heliopuddle.server.schemas import ProjectRead
+from heliopuddle.storage.backends import server_only
 from heliopuddle.storage.credentials import location_problems
 
 if TYPE_CHECKING:
@@ -42,6 +43,7 @@ def storage_location_read(
         "create_root": cfg.create_root if cfg else "auto",
         "quota": cfg.quota if cfg else None,
         "status": "incomplete" if problems else "ok",
+        "direct_access": not server_only(row.url),
         "problems": problems,
         **index_times(progress),
     }

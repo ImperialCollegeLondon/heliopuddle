@@ -1,9 +1,9 @@
-"""Error responses and handlers shared by the routers (busy, invalid version, conflicts)."""
+"""Error responses and handlers shared by the routers (busy, invalid version, conflicts, rclone)."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from heliopuddle.server import models
 from heliopuddle.server.database.orm import utcnow
@@ -28,6 +29,7 @@ from heliopuddle.server.services.rule_control import (
 from heliopuddle.server.services.runs import RunSubmitError
 from heliopuddle.settings import Settings
 from heliopuddle.storage.credentials import StorageLocationIncomplete
+from heliopuddle.storage.rclone import RcloneBusyError, wait_limit
 from heliopuddle.versioning import InvalidVersionError
 
 
@@ -151,3 +153,38 @@ def install_storage_location_incomplete(app: FastAPI) -> None:
     ``reason: "storage_location_incomplete"`` and the ``problems`` (STO-18).
     """
     app.add_exception_handler(StorageLocationIncomplete, _storage_location_incomplete)
+
+
+def _rclone_busy(request: Request, exc: Exception) -> JSONResponse:
+    wait = request.app.state.rclone_wait()
+    return JSONResponse(
+        status_code=503,
+        content={"detail": f"rclone storage location busy: {exc}", "reason": "rclone_busy"},
+        headers={"Retry-After": str(max(1, math.ceil(wait)))},
+    )
+
+
+class RcloneWaitMiddleware:
+    """Bound how long a request waits for a busy rclone config (STO-20).
+
+    Services wait without limit; a request waits ``HELIOPUDDLE_RCLONE_API_WAIT``
+    and then gets ``503`` with ``Retry-After`` (:func:`install_rclone_busy`).
+    """
+
+    def __init__(self, app: ASGIApp, wait: Callable[[], float]) -> None:
+        self.app = app
+        self.wait = wait
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        with wait_limit(self.wait()):
+            await self.app(scope, receive, send)
+
+
+def install_rclone_busy(app: FastAPI, wait: Callable[[], float]) -> None:
+    """Bound rclone config waits per request and answer ``503`` when one is busy."""
+    app.state.rclone_wait = wait
+    app.add_middleware(RcloneWaitMiddleware, wait=wait)
+    app.add_exception_handler(RcloneBusyError, _rclone_busy)

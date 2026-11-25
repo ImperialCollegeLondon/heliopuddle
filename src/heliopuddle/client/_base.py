@@ -229,7 +229,8 @@ class ClientBase:
         """The storage location for direct access, or None to transfer through the API.
 
         An incomplete storage location (a Prefect block is missing, STO-18) goes
-        through the API too, which answers ``409 storage_location_incomplete``.
+        through the API too, which answers ``409 storage_location_incomplete``,
+        and so does one only the server reaches (``direct_access: false``, rclone).
         """
         try:
             location = self.get_storage_location(name)
@@ -237,4 +238,6 @@ class ClientBase:
             if "hp-client-storage-read-write" not in error.required_roles:
                 raise
             return None
-        return None if location.status == "incomplete" else location
+        if location.status == "incomplete" or not location.direct_access:
+            return None
+        return location
