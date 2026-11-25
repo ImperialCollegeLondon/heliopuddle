@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import IO, Any, cast
 
 import fsspec
+from fsspec.registry import known_implementations
 from fsspec.spec import AbstractBufferedFile
 
 __all__ = [
@@ -76,9 +77,12 @@ __all__ = [
 # hp's rclone:// filesystem. Also declared as an ``fsspec.specs`` entry point;
 # registered here by import path (nothing is imported until it is used) so it
 # resolves even in an environment installed before the entry point existed.
-fsspec.register_implementation(
-    "rclone", "heliopuddle.storage.rclone.fs.RcloneFileSystem", clobber=False
-)
+# Older fsspec releases already list entry points in known_implementations and
+# refuse a second registration, so register only when the name is unknown.
+if "rclone" not in known_implementations:
+    fsspec.register_implementation(
+        "rclone", "heliopuddle.storage.rclone.fs.RcloneFileSystem", clobber=False
+    )
 
 #: fsspec protocols of object stores (S3 and S3-compatible, GCS, Azure Blob and
 #: ADLS, Alibaba OSS, Cloudflare R2).

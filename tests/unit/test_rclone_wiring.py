@@ -287,3 +287,15 @@ def test_client_transfers_through_the_api_without_direct_access(
     monkeypatch.setattr(client, "get_storage_location", lambda name=None: detail, raising=False)
     found = client._transfer_location("remote")  # pyright: ignore[reportPrivateUsage]
     assert (found is detail) is direct
+
+
+@pytest.mark.req("STO-05")
+def test_registering_rclone_again_does_not_fail() -> None:
+    """Older fsspec lists the entry point already; a second import must not raise."""
+    import importlib
+
+    from fsspec.registry import known_implementations
+
+    assert "rclone" in known_implementations
+    importlib.reload(backends)
+    assert "rclone" in known_implementations
