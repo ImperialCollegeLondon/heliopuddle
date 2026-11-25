@@ -106,6 +106,18 @@ logs, messages and the DB `storage_location.url` column; a `url` with
 placeholders is stored unresolved. Inline options are merged over the block's
 settings key by key (nested mappings merge recursively).
 
+Because that configured `url` does not change when a block's base path (or a
+whole-URL Secret) does, a moved root is detected on open instead:
+`stores.note_resolved_root` (called by `store_for` and the index's
+`resolve_location`) compares the credential-free resolved root
+(`credentials.root_identity`: scheme, host, port and path) with
+`storage_location.resolved_root`. The first one is recorded; a different one
+resets the storage location exactly as a changed `url` does
+(`models.storage_location_moved`: copies pending re-check, generations
+bumped, index progress dropped). A per-process cache skips the database while
+the root is unchanged, and nothing is recorded while the blocks cannot be
+resolved.
+
 **A missing block never stops startup**, because the user needs the server
 running to create it. The storage location is **incomplete** instead:
 
@@ -181,12 +193,27 @@ So across every process and node, at most one rcd uses a given config, and
 refreshed tokens are never lost or raced (a Box OAuth refresh token is single
 use). Different configs, normally different projects, run in parallel.
 
-A session is shared by every caller in the process that needs a subset of its
-configs (reference counted) and closed `HELIOPUDDLE_RCLONE_IDLE` (default
-`2s`) after its last use, so a batch of calls pays for one rcd start. A caller
-needing a config the open session lacks waits for it to close and opens one
-with the union. The slots are held by a session thread for the session's
+A process can hold several sessions, each over exactly the configs its first
+caller asked for (never merged with other callers' configs, so two configs
+that both define a remote such as `archive` never collide unless one caller
+uses both). A session is shared by every caller in the process that needs a
+subset of its configs (reference counted) and closed `HELIOPUDDLE_RCLONE_IDLE`
+(default `2s`) after its last use, so a batch of calls pays for one rcd start.
+A caller whose configs overlap no session opens its own, in parallel with the
+others. Only overlapping configs wait: a caller needing a config that an
+overlapping session lacks marks that session draining (no new callers join
+it), waits for it to close and tries again. A thread already holding a
+session that lacks a config it now needs gets an error at once instead of
+waiting for itself. The slots are held by a session thread for the session's
 life; Prefect renews their lease, and a dead holder's lease expires.
+
+One deadline bounds every wait of a call: for an overlapping session to close,
+for the slots (a new session's thread gets the caller's remaining time) and
+for rcd to be ready. A caller out of time drops only its own reference: a
+session other callers hold or are starting keeps going (a caller with a longer
+budget whose shared session gave up on its slots tries again within its own
+budget), and one nobody holds any more releases its slots without starting
+rcd, or closes when idle.
 Services wait for slots without limit; API requests wait at most
 `HELIOPUDDLE_RCLONE_API_WAIT` (default `30s`) and then answer `503` with
 `reason: rclone_busy` and `Retry-After`. `RcloneBusyError` is a `TimeoutError`
@@ -201,7 +228,7 @@ file config source are used.
 `server start` registers the `RCloneConfigFileBlock` type with Prefect once
 Prefect is up (`register_rclone_block_type`), so the block can be created in
 the Prefect UI on a fresh server; a failure is a warning, never a startup
-error. On shutdown it closes the open rclone session after the served
+error. On shutdown it closes every open rclone session after the served
 deployments stop and **before** Prefect stops (`close_rclone_sessions`),
 because writing a refreshed token back to its block needs Prefect; a session
 that does not close in time or a config that could not be saved is logged as

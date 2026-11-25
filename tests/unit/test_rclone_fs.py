@@ -284,7 +284,7 @@ def test_calls_share_one_session(make_remote: RemoteFactory) -> None:
     with manager.use([loc.fs.source]) as session:  # type: ignore[attr-defined]
         loc.write("a.txt", io.BytesIO(b"a"))
         assert loc.exists("a.txt")
-        assert manager.session is session
+        assert manager.sessions == (session,)
 
 
 def test_generic_hooks_ignore_other_filesystems() -> None:

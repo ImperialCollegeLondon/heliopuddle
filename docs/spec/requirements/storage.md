@@ -180,8 +180,13 @@ location loads a Prefect `RemoteFileSystem` block: `basepath` is the `url` and
 `settings` the `storage_options`. Inline `storage_options` are merged over the
 block's settings and placeholders are then expanded. `block` with `url` is a
 config error. A missing block marks the storage location `incomplete`
-(STO-18).
-*Verify:* unit tests with a fake resolver; integration test with a real block.
+(STO-18). When the root a block (or a whole-URL Secret) resolves to changes,
+even after startup, the storage location is reset as for a changed `url`
+(SVC-12): copies pending re-check, generations bumped, index progress
+dropped. The comparison uses the credential-free root stored in
+`storage_location.resolved_root`.
+*Verify:* unit tests with a fake resolver (including a moved root resetting the
+copies); integration test with a real block.
 
 **STO-20 (M7)** **One rcd per rclone config, started locally.** Every
 interaction with an rclone storage location runs inside an rclone session:
@@ -196,11 +201,17 @@ prefect-managedfiletransfer `RCloneConfigFileBlock` document: `remote_name`,
 `config_file_contents`) or `storage_options.config_file`; after every session,
 including failed ones, a config whose contents changed (a refreshed token) is
 saved back to its block or file. Sessions are re-entrant within a process.
-Flow tasks hold a session per batch; API requests wait at most
-`HELIOPUDDLE_RCLONE_API_WAIT` (default `30s`) and then return `503` with
-`Retry-After`. A missing config block marks the storage location `incomplete`.
+A process can run several sessions at once, each over exactly the configs
+its caller asked for (unrelated configs are never merged); only a caller
+whose configs overlap an open session lacking some of them waits for that
+session to close. Flow tasks hold a session per batch; API requests wait at
+most `HELIOPUDDLE_RCLONE_API_WAIT` (default `30s`), one deadline for every
+wait (another session, the lock and rcd start), and then return `503` with
+`Retry-After`; a request that gives up never stops a session other callers
+use. A missing config block marks the storage location `incomplete`.
 *Verify:* unit tests (session lifecycle, write-back on failure, re-entrancy,
-config assembly, duplicate remote names); integration test with two processes
+config assembly, duplicate remote names, parallel sessions, one deadline);
+integration test with two processes
 on one external Prefect: rcd lifetimes on one config never overlap, on two
 configs they can.
 

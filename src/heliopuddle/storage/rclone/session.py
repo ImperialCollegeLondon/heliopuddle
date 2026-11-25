@@ -7,12 +7,16 @@ process-local locks otherwise) for its whole life, writes the configs into a
 private temp config, runs rcd on it, and at the end stops rcd and writes every
 config rclone changed back to its block or file, even after a failure.
 
-A session is shared by reference count by every caller in the process that
-needs a subset of its configs, and closes ``idle`` seconds after its last
-use. A caller needing a config the open session lacks waits for it to close
-(no new callers join it meanwhile) and opens one with the union of what the
-waiting callers need. The locks are entered and left in a dedicated session
-thread, since a lock may have to be released by the thread that took it.
+A process may hold several sessions, each over exactly the configs its
+creating caller asked for. A session is shared by reference count by every
+caller in the process that needs a subset of its configs, and closes ``idle``
+seconds after its last use. A caller whose configs overlap no session opens
+its own (in parallel); one whose configs overlap a session lacking some of
+them marks that session draining (no new callers join it), waits for it to
+close and tries again. Every wait of one call (for another session, for the
+config locks and for rcd to be ready) shares one deadline. The locks are
+entered and left in a dedicated session thread, since a lock may have to be
+released by the thread that took it.
 """
 
 from __future__ import annotations
@@ -62,6 +66,7 @@ logger = logging.getLogger(__name__)
 LockFactory = Callable[[list[str], float | None], AbstractContextManager[Any]]
 
 _UNSET: Any = object()
+_LIVE = ("starting", "open")
 _WAIT: ContextVar[float | None] = ContextVar("heliopuddle_rclone_wait", default=None)
 
 
@@ -77,6 +82,16 @@ def wait_limit(seconds: float | None) -> Iterator[None]:
         yield
     finally:
         _WAIT.reset(token)
+
+
+def _remaining(deadline: float | None) -> float | None:
+    """Seconds left until ``deadline`` (never negative); None for no deadline."""
+    return None if deadline is None else max(0.0, deadline - time.monotonic())
+
+
+def _busy(sources: Iterable[ConfigSource]) -> RcloneBusyError:
+    names = ", ".join(sorted(s.describe() for s in sources))
+    return RcloneBusyError(f"rclone {names} is busy (in use elsewhere); try again later")
 
 
 class LocalLocks:
@@ -158,6 +173,10 @@ class Session:
             names = sorted(s.lock_name for s in self.sources)
             with owner.lock_factory(names, self._wait):
                 locked = True
+                with owner.cond:
+                    if self.refs == 0:  # every caller gave up waiting: do not start rcd
+                        self.state = "closing"
+                        return
                 try:
                     self._start(owner.block_store)
                     with owner.cond:
@@ -168,14 +187,13 @@ class Session:
                     self._shutdown(owner.block_store)
         except BaseException as e:
             if not locked and isinstance(e, TimeoutError):
-                names = ", ".join(sorted(s.describe() for s in self.sources))
-                e = RcloneBusyError(f"rclone {names} is in use elsewhere; try again later")
+                e = _busy(self.sources)
             self.error = e
         finally:
             with owner.cond:
                 self.state = "closed"
-                if owner.session is self:
-                    owner.session = None
+                if self in owner.session_list:
+                    owner.session_list.remove(self)
                 owner.cond.notify_all()
             self.ready.set()
             self.done.set()
@@ -256,7 +274,7 @@ class Lease:
 
 
 class SessionManager:
-    """The process-wide owner of the rclone session (see the module docstring).
+    """The process-wide owner of the rclone sessions (see the module docstring).
 
     Attributes:
         idle: seconds a session stays open after its last use.
@@ -264,17 +282,24 @@ class SessionManager:
         start_timeout: seconds to wait for rcd to answer.
         lock_factory: the config lock (see :func:`set_session_hooks`).
         block_store: where ``config_block`` configs live, or None.
+        session_list: the sessions not closed yet (guarded by ``cond``; read
+            :attr:`sessions` instead).
     """
 
     def __init__(self) -> None:
         self.cond = threading.Condition()
-        self.session: Session | None = None
+        self.session_list: list[Session] = []
         self.idle = 2.0
         self.tmp_dir: str | None = None
         self.start_timeout = 30.0
         self.lock_factory: LockFactory = LocalLocks()
         self.block_store: BlockStore | None = None
-        self._waiting: list[frozenset[ConfigSource]] = []
+
+    @property
+    def sessions(self) -> tuple[Session, ...]:
+        """The sessions of this process that have not closed yet."""
+        with self.cond:
+            return tuple(self.session_list)
 
     @contextmanager
     def use(
@@ -299,58 +324,75 @@ class SessionManager:
             lease.release()
 
     def acquire(self, sources: Iterable[ConfigSource], wait: float | None = _UNSET) -> Lease:
-        """Like :meth:`use`, for a reference held across calls (an open file)."""
+        """Like :meth:`use`, for a reference held across calls (an open file).
+
+        One deadline (``wait`` from now) bounds every wait: for an overlapping
+        session to close, for the config locks and for rcd to be ready.
+        """
         needed = frozenset(sources)
         timeout = _WAIT.get() if wait is _UNSET else wait
         deadline = None if timeout is None else time.monotonic() + timeout
         tid = threading.get_ident()
-        with self.cond:
-            session = self._join_or_create(needed, tid, deadline, timeout)
-        # Bounded: the session thread waits for its locks at most ``timeout``
-        # and for rcd at most ``start_timeout``.
-        session.ready.wait()
-        if session.error is not None:
+        while True:
+            with self.cond:
+                session = self._join_or_create(needed, tid, deadline)
+            if not session.ready.wait(_remaining(deadline)):
+                # Out of time: drop only this caller's reference; the session
+                # keeps starting for its other callers (or closes unused).
+                self.release(session, tid)
+                raise _busy(needed)
+            error = session.error
+            if error is None:
+                return Lease(session, self, tid)
             self.release(session, tid)
-            raise session.error
-        return Lease(session, self, tid)
+            # A session started by a caller with a shorter budget gave up on
+            # its locks: try again within this caller's own budget.
+            left = _remaining(deadline)
+            if not isinstance(error, RcloneBusyError) or (left is not None and left <= 0):
+                raise error
 
     def _join_or_create(
-        self,
-        needed: frozenset[ConfigSource],
-        tid: int,
-        deadline: float | None,
-        timeout: float | None,
+        self, needed: frozenset[ConfigSource], tid: int, deadline: float | None
     ) -> Session:
-        registered = False
-        try:
-            while True:
-                session = self.session
-                if session is None:
-                    union = needed.union(*self._waiting)
-                    session = self.session = Session(union, self)
-                    session.start(timeout)
-                    return self._ref(session, tid)
-                covers = needed <= session.sources and session.state in ("starting", "open")
-                if covers and (not session.draining or session.holders[tid] > 0):
-                    return self._ref(session, tid)
-                if session.holders[tid] > 0 and not needed <= session.sources:
-                    raise RcloneConfigError(
-                        "this thread already uses an rclone session without every config it "
-                        "now needs; open one session with all of them first (SessionManager.use)"
-                    )
-                if not needed <= session.sources:
-                    session.draining = True
-                if not registered:
-                    self._waiting.append(needed)
-                    registered = True
-                self.cond.notify_all()
-                remaining = None if deadline is None else deadline - time.monotonic()
-                if remaining is not None and remaining <= 0:
-                    raise RcloneBusyError("the rclone session is busy; try again later")
-                self.cond.wait(remaining)
-        finally:
-            if registered:
-                self._waiting.remove(needed)
+        while True:
+            session = self._joinable(needed, tid)
+            if session is not None:
+                return self._ref(session, tid)
+            overlapping = [s for s in self.session_list if s.sources & needed]
+            remaining = _remaining(deadline)
+            if not overlapping and (remaining is None or remaining > 0):
+                session = Session(needed, self)
+                self.session_list.append(session)
+                session.start(remaining)
+                return self._ref(session, tid)
+            for other in overlapping:
+                if not needed <= other.sources:
+                    other.draining = True
+            self.cond.notify_all()
+            if remaining is not None and remaining <= 0:
+                raise _busy(needed)
+            self.cond.wait(remaining)
+
+    def _joinable(self, needed: frozenset[ConfigSource], tid: int) -> Session | None:
+        """A live session with every config in ``needed`` this caller may join, if any.
+
+        Raises:
+            RcloneConfigError: this thread holds a session lacking one of
+                ``needed`` (waiting could wait for itself).
+        """
+        held = [s for s in self.session_list if s.holders[tid] > 0]
+        if any(not needed <= s.sources for s in held):
+            raise RcloneConfigError(
+                "this thread already uses an rclone session without every config it "
+                "now needs; open one session with all of them first (SessionManager.use)"
+            )
+        for session in held:
+            if session.state in _LIVE:
+                return session
+        for session in self.session_list:
+            if session.state in _LIVE and not session.draining and needed <= session.sources:
+                return session
+        return None
 
     @staticmethod
     def _ref(session: Session, tid: int) -> Session:
@@ -369,22 +411,22 @@ class SessionManager:
             self.cond.notify_all()
 
     def close(self, timeout: float | None = None, *, force: bool = False) -> bool:
-        """Close the open session once unused (``force``: now) and wait for it.
+        """Close every session once unused (``force``: now) and wait for them.
 
         Returns:
-            True if no session is open afterwards.
+            True if every session closed within ``timeout``.
         """
+        deadline = None if timeout is None else time.monotonic() + timeout
         with self.cond:
-            session = self.session
-            if session is None:
-                return True
-            session.draining = True
-            session.close_now = session.close_now or force
+            sessions = list(self.session_list)
+            for session in sessions:
+                session.draining = True
+                session.close_now = session.close_now or force
             self.cond.notify_all()
-        return session.done.wait(timeout)
+        return all([session.done.wait(_remaining(deadline)) for session in sessions])
 
     def shutdown(self) -> None:
-        """Close the session now, saving changed configs (atexit), within a few seconds."""
+        """Close every session now, saving changed configs (atexit), within a few seconds."""
         with contextlib.suppress(Exception):
             self.close(10.0, force=True)
 

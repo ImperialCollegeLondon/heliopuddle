@@ -302,8 +302,8 @@ def test_registering_rclone_again_does_not_fail() -> None:
 
 
 class _FakeManager:
-    def __init__(self, closed: bool, errors: list[str], raises: bool = False) -> None:
-        self.session = type("S", (), {"writeback_errors": errors})() if errors or closed else None
+    def __init__(self, closed: bool, *errors: list[str], raises: bool = False) -> None:
+        self.sessions = tuple(type("S", (), {"writeback_errors": e})() for e in errors)
         self.closed = closed
         self.raises = raises
         self.calls: list[tuple[float | None, bool]] = []
@@ -319,15 +319,21 @@ class _FakeManager:
 @pytest.mark.parametrize(
     ("manager", "ok", "logged"),
     [
-        (_FakeManager(closed=True, errors=[]), True, None),
-        (_FakeManager(closed=False, errors=[]), False, "did not close"),
+        (_FakeManager(True), True, None),
+        (_FakeManager(True, [], []), True, None),
+        (_FakeManager(False, []), False, "did not close"),
         (
-            _FakeManager(closed=True, errors=["saving rclone config block 'sp' failed"]),
+            _FakeManager(True, ["saving rclone config block 'sp' failed"]),
             False,
             "not saved on shutdown",
         ),
         (
-            _FakeManager(closed=True, errors=[], raises=True),
+            _FakeManager(True, [], ["saving rclone config block 'b2' failed"]),
+            False,
+            "config block 'b2' failed",
+        ),
+        (
+            _FakeManager(True, [], raises=True),
             False,
             "Closing rclone sessions failed",
         ),
@@ -348,6 +354,21 @@ def test_close_sessions_reports_lost_write_back(
         assert not caplog.records
     else:
         assert logged in caplog.text
+
+
+@pytest.mark.req("STO-20")
+def test_close_sessions_reports_write_back_errors_of_every_session(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    fake = _FakeManager(True, ["block 'a' failed"], [], ["block 'b' failed", "block 'c' failed"])
+    monkeypatch.setattr(rclone, "manager", fake)
+    with caplog.at_level("ERROR"):
+        assert rclone_hooks.close_rclone_sessions(5.0) is False
+    assert [r.getMessage().rsplit(": ", 1)[1] for r in caplog.records] == [
+        "block 'a' failed",
+        "block 'b' failed",
+        "block 'c' failed",
+    ]
 
 
 @pytest.mark.req("STO-20")

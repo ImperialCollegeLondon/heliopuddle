@@ -84,49 +84,12 @@ def test_session_is_shared_and_closes_when_idle(make_remote: RemoteFactory) -> N
     assert first.done.wait(5)
     assert process.poll() is not None
     assert first.directory is not None and not first.directory.exists()
-    assert manager.session is None
-
-
-@pytest.mark.req("STO-20")
-def test_other_config_waits_then_opens_the_union(make_remote: RemoteFactory) -> None:
-    a, b = _file(make_remote("a")), _file(make_remote("b"))
-    opened: list[frozenset[ConfigSource]] = []
-    with manager.use([a]) as first:
-        thread = threading.Thread(target=lambda: opened.append(_use_sources([b])), name="needs-b")
-        thread.start()
-        time.sleep(0.1)
-        assert first.draining  # no new callers join it
-        assert not opened
-    thread.join(10)
-    assert opened == [frozenset({b})]
-    with manager.use([a, b]) as both:
-        assert both.remotes == {"a", "b"}
+    assert manager.sessions == ()
 
 
 def _open(sources: list[ConfigSource], **wait: float | None) -> None:
     with manager.use(sources, **wait):
         pass
-
-
-def _use_sources(sources: list[ConfigSource]) -> frozenset[ConfigSource]:
-    with manager.use(sources) as session:
-        return session.sources
-
-
-@pytest.mark.req("STO-20")
-def test_waiters_get_the_union_of_their_configs(make_remote: RemoteFactory) -> None:
-    a, b, c = (_file(make_remote(n)) for n in "abc")
-    seen: list[frozenset[ConfigSource]] = []
-    with manager.use([a]):
-        threads = [
-            threading.Thread(target=lambda s=s: seen.append(_use_sources([s]))) for s in (b, c)
-        ]
-        for t in threads:
-            t.start()
-        time.sleep(0.2)
-    for t in threads:
-        t.join(10)
-    assert seen == [frozenset({b, c})] * 2
 
 
 @pytest.mark.req("STO-20")
@@ -165,11 +128,11 @@ def test_waiting_for_another_session_times_out(make_remote: RemoteFactory) -> No
     assert holding.wait(10)
     try:
         with pytest.raises(RcloneBusyError, match="busy"):
-            _open([b], wait=0.1)
+            _open([a, b], wait=0.1)
     finally:
         done.set()
         thread.join(10)
-    _open([b], wait=10)
+    _open([a, b], wait=10)
 
 
 @pytest.mark.req("STO-20")

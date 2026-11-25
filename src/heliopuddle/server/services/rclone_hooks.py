@@ -252,7 +252,7 @@ def register_rclone_block_type() -> bool:
 
 
 def close_rclone_sessions(timeout: float = 30.0) -> bool:
-    """Close the open rclone session now, saving refreshed tokens (call before Prefect stops).
+    """Close every rclone session now, saving refreshed tokens (call before Prefect stops).
 
     Config blocks are saved through Prefect, so this must run while Prefect is
     still up. A session that does not close in time, or a config that could
@@ -260,9 +260,9 @@ def close_rclone_sessions(timeout: float = 30.0) -> bool:
     remote may need reconnecting.
 
     Returns:
-        True if no session is open and every changed config was saved.
+        True if every session closed and every changed config was saved.
     """
-    session = rclone.manager.session
+    sessions = rclone.manager.sessions
     try:
         closed = rclone.manager.close(timeout, force=True)
     except Exception as e:
@@ -275,7 +275,7 @@ def close_rclone_sessions(timeout: float = 30.0) -> bool:
             timeout,
         )
         return False
-    errors = list(session.writeback_errors) if session is not None else []
+    errors = [error for session in sessions for error in session.writeback_errors]
     for error in errors:
         logger.error(
             "rclone config not saved on shutdown (reconnect the remote if it fails): %s", error
