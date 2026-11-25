@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 
 from heliopuddle.storage.location import StorageLocation
 from heliopuddle.storage.rclone import RcloneBusyError
-from tests.unit.test_file_content_api import api, reserve
+from tests.local_auth import add_user
+from tests.unit.test_file_content_api import api, reserve, token_for
 
 __all__ = ["api"]  # the fixture, re-used from the content API tests
 
@@ -59,3 +60,19 @@ def test_busy_config_on_upload_is_503(api: TestClient, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(StorageLocation, "write", busy)
     _assert_busy(api.put(f"/uploads/{token}/content", content=b"content"))
+
+
+@pytest.mark.req("STO-20")
+def test_busy_config_on_delete_is_503(api: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from heliopuddle.server.api.files import delete as delete_route
+
+    file_id = _stored_file(api)
+
+    class Busy:
+        @staticmethod
+        def fn(*args: object, **kwargs: object) -> None:
+            raise BUSY
+
+    monkeypatch.setattr(delete_route, "delete_file", Busy)
+    add_user(api.app.state.ctx, "deleter", ["hp-deleter:demo"])  # type: ignore[union-attr]
+    _assert_busy(api.delete(f"/files/{file_id}", headers=token_for(api, "deleter")))

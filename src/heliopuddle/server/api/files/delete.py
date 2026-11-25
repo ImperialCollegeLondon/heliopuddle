@@ -22,6 +22,7 @@ from heliopuddle.server.schemas import (
     FileRead,
 )
 from heliopuddle.server.services.delete import delete_file
+from heliopuddle.storage.rclone import RcloneBusyError
 
 router = APIRouter()
 
@@ -56,6 +57,8 @@ def remove_file(file_id: int, ctx: Ctx, user: User) -> FileRead | JSONResponse:
         raise HTTPException(status_code=404, detail=f"file {file_id} not found") from None
     except models.CopyBusy as e:
         return busy(e.copy_id, e.deadline)
+    except RcloneBusyError:
+        raise  # the global handler answers 503 with Retry-After
     except Exception as e:
         logger.error("delete_file(%s) failed (%s)", file_id, type(e).__name__)
         raise HTTPException(
