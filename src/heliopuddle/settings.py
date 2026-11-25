@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     )
 
     oidc_issuer: str | None = Field(default=None, description="e.g. https://host/realms/<realm>")
+    oidc_discovery_url: str | None = Field(
+        default=None,
+        description="Where hp reads the provider's discovery document, when hp reaches the "
+        "provider at another address than browsers do (e.g. on a private network); default: "
+        "<issuer>/.well-known/openid-configuration (AUTH-21)",
+    )
     oidc_client_id: str | None = None
     oidc_client_secret: SecretStr | None = None
     oidc_audience: str | None = Field(default=None, description="Defaults to the client id")
@@ -120,6 +126,12 @@ class Settings(BaseSettings):
 
     prefect_ui_url: str | None = Field(
         default=None, description="Link target for the Prefect UI; derived from PREFECT_API_URL"
+    )
+
+    frame_ancestors: str = Field(
+        default="'none'",
+        description="Who may show hp pages in a frame: the sources of the CSP frame-ancestors "
+        "directive, e.g. 'self' for a portal on the same origin (AUTH-19)",
     )
 
     op_lease: Duration = Field(
@@ -179,6 +191,23 @@ class Settings(BaseSettings):
                 "sessions forgeable. Unset it to let hp generate and keep a random key"
             )
         return value
+
+    @field_validator("frame_ancestors")
+    @classmethod
+    def _one_frame_ancestors_directive(cls, value: str) -> str:
+        sources = value.strip(" ").split(" ")
+        if (
+            not value.strip(" ")
+            or not value.isprintable()
+            or any(c in value for c in ";,")
+            or any(s.lower() in ("none", "self") for s in sources)
+            or ("'none'" in sources and len([s for s in sources if s]) > 1)
+        ):
+            raise ValueError(
+                "must be 'none' or one or more frame-ancestors sources separated by spaces, "
+                "such as 'self' (with the quotes) or https://portal.example.org"
+            )
+        return " ".join(s for s in sources if s)
 
     @field_validator("auth_token_ttl", "login_window")
     @classmethod

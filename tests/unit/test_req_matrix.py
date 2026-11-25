@@ -32,7 +32,7 @@ def test_auth_requirements_are_parsed_with_their_milestone() -> None:
     reqs = req_matrix.load_requirements()
     assert reqs["AUTH-01"][0] == (5, "A")
     assert reqs["CLI-01"][0] == (1, "")
-    assert len([r for r in reqs if r.startswith("AUTH-")]) == 20
+    assert len([r for r in reqs if r.startswith("AUTH-")]) == 21
 
 
 def test_amended_requirements_keep_their_original_milestone() -> None:

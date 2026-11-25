@@ -467,6 +467,12 @@ environment:
 Several hp processes (API replicas, or a UI on its own port or host) must share
 `HELIOPUDDLE_AUTH_SECRET_KEY`.
 
+When hp reaches the provider at another address than browsers do (e.g. Keycloak
+on a private network behind the same reverse proxy), also set
+`HELIOPUDDLE_OIDC_DISCOVERY_URL` to the discovery document on that address
+(AUTH-21, see [auth](auth.md#oidc-mode-keycloak)). To show the UI inside a
+portal's frame, set `HELIOPUDDLE_FRAME_ANCESTORS` (default `'none'`, AUTH-19).
+
 ## Reverse proxies
 
 `HELIOPUDDLE_API_ROOT_PATH` and `HELIOPUDDLE_UI_ROOT_PATH` set the ASGI

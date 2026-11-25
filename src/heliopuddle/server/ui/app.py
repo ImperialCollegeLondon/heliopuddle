@@ -104,7 +104,7 @@ def create_ui(
         ui_auth.install_session(app, settings, root_path)  # fails fast without a key
     if root_path:
         app.add_middleware(_RootPathMiddleware, root_path=root_path)
-    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware, frame_ancestors=settings.frame_ancestors)
     app.state.root_path = root_path
     app.mount("/static", StaticFiles(directory=_HERE / "static"), name="ui_static")
 

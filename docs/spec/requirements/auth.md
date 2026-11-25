@@ -265,14 +265,31 @@ username's count. The counters are per process.
 *Verify:* unit tests with an injectable clock: per-username, per-address,
 reset on success, expiry, and the UI message.
 
-**AUTH-19 (M6A)** **Security headers.** Every API and UI response carries
+**AUTH-19 (M6A, amended M7)** **Security headers.** Every API and UI response carries
 `Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`,
 `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`. A header a
 route set is kept; a route's CSP without `frame-ancestors` gets it appended.
-*Verify:* unit tests on UI pages, errors, API responses and the image route.
+`HELIOPUDDLE_FRAME_ANCESTORS` (default `'none'`) sets the `frame-ancestors`
+sources, so a portal can embed the UI (e.g. `'self'` for one on the same
+origin); `X-Frame-Options` is then `SAMEORIGIN` for `'self'` and left out for
+values it cannot express. Values with other directives (`;`), commas, control
+characters, or unquoted `self`/`none` stop startup.
+*Verify:* unit tests on UI pages, errors, API responses and the image route,
+with the default and with the setting.
 
 **AUTH-20 (M6A)** **Header mode needs the header.** In `header` mode a request
 without the user header (or with an empty one) gets `401`, except on the public
 routes. `server start` logs a WARNING when `header` mode binds a non-loopback
 host.
 *Verify:* unit tests of the `401`s and of the warning.
+
+**AUTH-21 (M7)** **Provider on another address.** When hp reaches the OIDC
+provider at another address than browsers do (a provider on a private network
+whose issuer is its public URL), `HELIOPUDDLE_OIDC_DISCOVERY_URL` says where hp
+reads the discovery document. hp uses the endpoints in it as they are (the
+provider returns its server-to-server endpoints at the address it was asked on,
+and its browser endpoints at the public one) and still requires its `issuer` to
+equal `HELIOPUDDLE_OIDC_ISSUER`. A document that cannot be read stops startup
+with a message naming `HELIOPUDDLE_OIDC_DISCOVERY_URL`. Unset, the document is
+read from `<issuer>/.well-known/openid-configuration` as before.
+*Verify:* unit tests against the fake issuer with split endpoints.

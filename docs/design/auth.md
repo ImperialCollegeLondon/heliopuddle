@@ -258,7 +258,8 @@ JWTs locally with the provider's public keys, and only asks the provider
 about a token when introspection applies.
 
 **Settings.** `HELIOPUDDLE_OIDC_ISSUER` (for Keycloak
-`https://host/realms/<realm>`), `HELIOPUDDLE_OIDC_CLIENT_ID`,
+`https://host/realms/<realm>`), `HELIOPUDDLE_OIDC_DISCOVERY_URL` (optional, see
+below), `HELIOPUDDLE_OIDC_CLIENT_ID`,
 `HELIOPUDDLE_OIDC_CLIENT_SECRET`, `HELIOPUDDLE_OIDC_AUDIENCE` (default: the
 client id), `HELIOPUDDLE_OIDC_USERNAME_CLAIM`, `HELIOPUDDLE_OIDC_ROLES_CLAIM`
 (a dotted path, default `realm_access.roles`), `HELIOPUDDLE_OIDC_INTROSPECT`.
@@ -269,6 +270,21 @@ client id), `HELIOPUDDLE_OIDC_USERNAME_CLAIM`, `HELIOPUDDLE_OIDC_ROLES_CLAIM`
 `introspection_endpoint` (required unless introspection is `off`) are taken from it. An unreachable issuer, a missing
 setting, or a discovery document whose `issuer` differs from the setting stops
 startup with a message naming the setting.
+
+**Provider on another address (AUTH-21).** Behind a reverse proxy the issuer
+is usually the provider's public URL, which hp itself may not be able to reach
+(no public DNS inside a private network, or a certificate it does not trust).
+`HELIOPUDDLE_OIDC_DISCOVERY_URL` points hp at the discovery document on the
+address it can reach, e.g. `http://keycloak:8080/realms/<realm>/.well-known/openid-configuration`.
+hp uses the endpoints in the document as they are, so the provider must answer
+with its server-to-server endpoints (JWKS, token, introspection) on the address
+it was asked on and its browser endpoints (authorization, end session) on the
+public one. Keycloak does this with `KC_HOSTNAME=<public URL>` and
+`KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`. The document's `issuer` must still equal
+`HELIOPUDDLE_OIDC_ISSUER`, which tokens carry as `iss`. `GET /auth/config`
+announces the document's token endpoint, so clients on the same network get
+tokens there; a client elsewhere passes a token it got itself (`token=`,
+`--token`). hp does not rewrite any URL.
 
 **Validation.** `PyJWT`, with a `PyJWKClient` (as in the guide) fetching the keys
 from the provider's JWKS. The client caches the key set for an hour and, on an
@@ -423,7 +439,14 @@ hidden.
   `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`
   (`server/security_headers.py`). A header a route set itself is kept; a CSP
   without `frame-ancestors` gets it appended (the image route's sandbox CSP).
-  The UI never frames itself.
+  The UI never frames itself. A portal that shows the UI in a frame sets
+  `HELIOPUDDLE_FRAME_ANCESTORS` (e.g. `'self'` when it is on the same origin):
+  the CSP then names those sources, `X-Frame-Options` is `SAMEORIGIN` for
+  `'self'` and left out for any other value (it cannot name other origins, and
+  browsers use the CSP when it has `frame-ancestors`). The value must be plain
+  source expressions: `;`, commas, control characters and unquoted `self` or
+  `none` stop startup, so the setting cannot add other directives. Only
+  allow origins you trust: framing enables clickjacking by those pages.
 - Local tokens cannot be revoked individually; effective roles, `is_active`
   and `credentials_changed_at` are re-read from the DB per request, and the
   lifetime is bounded.

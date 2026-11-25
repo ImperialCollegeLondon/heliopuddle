@@ -110,9 +110,12 @@ class OidcProvider:
         """
         issuer = settings.resolved_oidc_issuer
         client = http_client or httpx.Client(timeout=_DISCOVERY_TIMEOUT)
-        well_known = f"{issuer}/.well-known/openid-configuration"
         who = f"HELIOPUDDLE_OIDC_ISSUER ({issuer})"
-        config = _get_json(client, well_known, f"{who}: cannot read the discovery document")
+        # AUTH-21: hp may reach the provider at another address than browsers do; the
+        # document's endpoints are used as they are and its issuer is still checked below
+        well_known = settings.oidc_discovery_url or f"{issuer}/.well-known/openid-configuration"
+        read_from = "HELIOPUDDLE_OIDC_DISCOVERY_URL" if settings.oidc_discovery_url else who
+        config = _get_json(client, well_known, f"{read_from}: cannot read the discovery document")
         if not isinstance(config, dict):
             raise OidcStartupError(f"{who}: the discovery document is not a JSON object")
         if str(config.get("issuer", "")).rstrip("/") != issuer:

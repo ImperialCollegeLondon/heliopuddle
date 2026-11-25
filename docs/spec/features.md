@@ -521,8 +521,8 @@ remotes (SharePoint, OneDrive, Box, ...) are storage locations through a new
 `rclone://` fsspec backend. Mirror rules are dropped: the existing copy, move
 and delete rules already sync a subset of files, including deletes.
 Requirements: STO-05 (rewritten), STO-17, STO-18, STO-19, STO-20, STO-21,
-STO-22, STO-23, DEP-08 (amended), DEP-21, DEP-22, plus every earlier milestone
-requirement.
+STO-22, STO-23, DEP-08 (amended), DEP-21, DEP-22, AUTH-19 (amended), AUTH-21,
+plus every earlier milestone requirement.
 Approved plan: [reviews/m7-plan.md](reviews/m7-plan.md). Design:
 [storage](../design/storage.md#credentials).
 
@@ -547,6 +547,9 @@ In scope:
 - A storage location can hold one project folder (`path_prefix`, STO-23),
   e.g. an rclone mirror of `upload_mirror/`; the mapping is in
   `StorageLocation`, so every backend supports it.
+- Running inside a platform portal: who may frame the UI is a setting
+  (AUTH-19 amended), and hp can read the OIDC discovery document from a
+  private address of the provider (AUTH-21).
 
 Out of scope: rclone as the first storage location (see
 [later](requirements/later.md)), an rcd service shared over the network,
@@ -741,3 +744,4 @@ in [operations](../design/operations.md).
 | K11 | Binary | Bundled in the image; otherwise downloaded at a pinned version with pinned SHA256s (`HELIOPUDDLE_RCLONE_AUTO_DOWNLOAD`) |
 | K12 | First storage location | rclone cannot be a project's first storage location in M7 (lock contention on interactive requests, SharePoint changing Office files); revisit later |
 | K13 | Partial storage locations | `path_prefix: <folder>`: a storage location's root holds one project folder; paths stay project paths everywhere, the mapping is only in `StorageLocation`; rules skip files outside a destination's prefix; prefixed storage locations are reached through the API (`direct_access: false`) |
+| K14 | Portal embedding | `HELIOPUDDLE_FRAME_ANCESTORS` (default `'none'`) instead of a fixed `frame-ancestors 'none'`; `HELIOPUDDLE_OIDC_DISCOVERY_URL` for a provider hp reaches on a private address. Both default to the old behaviour |

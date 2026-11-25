@@ -28,6 +28,7 @@ from heliopuddle.server.api.errors import (
 )
 from heliopuddle.server.context import AppContext, get_context, set_context
 from heliopuddle.server.security_headers import SecurityHeadersMiddleware
+from heliopuddle.settings import get_settings
 
 
 def create_api(ctx: AppContext | None = None) -> FastAPI:
@@ -46,7 +47,8 @@ def create_api(ctx: AppContext | None = None) -> FastAPI:
     if ctx is not None:
         set_context(ctx)
     app.state.ctx = ctx
-    app.add_middleware(SecurityHeadersMiddleware)
+    settings = ctx.settings if ctx is not None else get_settings()
+    app.add_middleware(SecurityHeadersMiddleware, frame_ancestors=settings.frame_ancestors)
     install_auth_handlers(app)
     install_validation_scrub(app)
     install_storage_location_incomplete(app)

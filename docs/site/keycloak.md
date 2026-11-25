@@ -84,3 +84,36 @@ to `off` to validate tokens locally only, or `always` to check every route.
 
 Behind a TLS-terminating proxy, make sure the proxy forwards the original scheme
 and host so the redirect URI heliopuddle builds matches one allowed in Keycloak.
+
+## Keycloak on a private network
+
+When heliopuddle and Keycloak run behind the same reverse proxy, browsers reach
+Keycloak at its public address (the issuer) but heliopuddle may not: the public
+host name may not resolve inside the private network, or its certificate may not
+be trusted there. Point heliopuddle at the discovery document on the address it
+can reach, and let Keycloak answer with the right address for each caller:
+
+```yaml
+    environment:
+      HELIOPUDDLE_OIDC_ISSUER: https://portal.example.org/auth/realms/myrealm
+      HELIOPUDDLE_OIDC_DISCOVERY_URL: http://keycloak:8080/auth/realms/myrealm/.well-known/openid-configuration
+```
+
+Keycloak needs `KC_HOSTNAME` set to its public URL (so tokens carry the public
+issuer and browsers are sent to the public login page) and
+`KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` (so the token, key and introspection
+endpoints in that document use the private address). heliopuddle checks the
+document's issuer against `HELIOPUDDLE_OIDC_ISSUER` and uses its endpoints as
+they are. Clients on the private network fetch their tokens from the private
+token endpoint that `GET /api/v1/auth/config` announces; a client elsewhere
+passes a token it got from Keycloak itself (`token=` or `--token`).
+
+## Showing heliopuddle inside a portal
+
+heliopuddle refuses to be shown in a frame by default
+(`frame-ancestors 'none'`). A portal that embeds the UI in an iframe sets
+`HELIOPUDDLE_FRAME_ANCESTORS` to the sources allowed to frame it, for example
+`'self'` (with the quotes) for a portal on the same origin, or
+`https://portal.example.org`. Serve heliopuddle under a sub-path of the portal
+with `HELIOPUDDLE_API_ROOT_PATH` and `HELIOPUDDLE_UI_ROOT_PATH` (e.g. `/files`),
+and allow `https://portal.example.org/files/*` as a redirect URI of the client.
