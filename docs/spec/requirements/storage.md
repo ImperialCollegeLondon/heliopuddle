@@ -233,8 +233,10 @@ folder (no `..`, `.`, empty segments, `\` or glob characters). A rule never
 selects a file outside its destination's prefix; an upload or registration
 outside a storage location's prefix is refused with `422`; the index adopts
 files found under the root as `<folder>/...`; the API reports `path_prefix`
-and the client applies it for direct access. A changed prefix moves every
-copy, like a changed `url` (SVC-12).
+and `direct_access: false` (older clients would map paths wrongly). A changed
+prefix moves every copy, like a changed `url` (SVC-12), restarts the rules into
+that storage location from a full run, and stops an index started before it;
+copies left outside the new prefix read as not found.
 *Verify:* unit tests of the mapping, listing and validation on local and
 memory storage; a rule copying `upload_mirror/**` into a prefixed local and a
 prefixed rclone (stand-in) storage location; index adoption; the 422; the

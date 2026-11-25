@@ -239,3 +239,79 @@ class TestRcloneMirror:
         store = store_for(ctx, "demo", "mirror")
         assert [e.path for e in store.list_files()] == ["upload_mirror/a/x.csv"]
         assert store.md5("upload_mirror/a/x.csv") == hashlib.md5(b"to rclone").hexdigest()
+
+
+def test_prefixed_locations_are_reached_through_the_server(api: TestClient) -> None:
+    rows = {r["name"]: r for r in api.get("/projects/demo/storage-locations").json()}
+    assert rows["mirror"]["direct_access"] is False  # older clients ignore path_prefix
+    assert rows["primary"]["direct_access"] is True
+
+
+def _reconfigure(ctx: AppContext, config_dir: Path, new_prefix: str) -> AppContext:
+    yaml = (config_dir / "demo.yaml").read_text()
+    (config_dir / "demo.yaml").write_text(
+        yaml.replace("path_prefix: upload_mirror", f"path_prefix: {new_prefix}")
+    )
+    moved = AppContext.from_settings(ctx.settings)
+    moved.sync_config()
+    return moved
+
+
+def test_a_prefix_change_restarts_rules_into_the_location(
+    ctx: AppContext, config_dir: Path
+) -> None:
+    from datetime import UTC, datetime
+
+    from heliopuddle.server.database.orm import RuleState
+
+    with ctx.write_session() as session:
+        project = models.get_project(session, "demo")
+        assert project is not None
+        session.add(
+            RuleState(
+                project_id=project.id,
+                rule_name="to-mirror",
+                watermark_at=datetime(2026, 1, 1, tzinfo=UTC),
+                watermark_id=7,
+            )
+        )
+    moved = _reconfigure(ctx, config_dir, "upload")
+    try:
+        with moved.sessionmaker() as session:
+            state = session.get(RuleState, (project.id, "to-mirror"))
+            assert state is not None and state.watermark_at is None and state.watermark_id is None
+    finally:
+        moved.dispose()
+
+
+def test_copies_left_outside_a_new_prefix_are_removed_by_the_index(
+    ctx: AppContext, config_dir: Path, mirror: Path
+) -> None:
+    _add(ctx, "mirror", "upload_mirror/keep.csv", b"keep")
+    moved = _reconfigure(ctx, config_dir, "elsewhere")
+    try:
+        from heliopuddle.server.context import set_context
+
+        set_context(moved)
+        index_full.fn("demo", "mirror")  # must not fail on the uncovered copy
+        state = _copies(moved, "mirror")["upload_mirror/keep.csv"]
+        assert state not in (FileState.AVAILABLE, FileState.PENDING)
+    finally:
+        set_context(ctx)
+        moved.dispose()
+
+
+def test_a_running_index_stops_when_the_prefix_changed(ctx: AppContext) -> None:
+    from heliopuddle.server.models.index.progress import _check_progress_storage
+
+    cfg = ctx.storage_location_config("demo", "mirror")
+    assert cfg is not None
+    with ctx.write_session() as session:
+        row = models.get_storage_location(session, "demo", "mirror")
+        assert row is not None
+        _check_progress_storage(session, row.id, cfg.identity)  # unchanged: fine
+        row.path_prefix = "other"
+        session.flush()
+        with pytest.raises(RuntimeError, match="changed while indexing"):
+            _check_progress_storage(session, row.id, cfg.identity)
+        session.rollback()

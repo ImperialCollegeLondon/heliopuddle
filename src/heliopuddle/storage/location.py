@@ -119,6 +119,32 @@ class StorageLocation:
             raise ValueError(f"path escapes the storage location root: {rel!r}")
         return posixpath.join(self.root, rel) if self.root != "/" else "/" + rel
 
+    @staticmethod
+    def _project_dir(prefix: str) -> str:
+        """A validated, normalised project folder (``""`` for the whole project)."""
+        if not prefix or prefix.strip("/") == "":
+            return ""
+        if prefix.startswith("/") or "\\" in prefix:
+            raise ValueError(f"path must be relative and '/'-separated: {prefix!r}")
+        normalised = posixpath.normpath(prefix.rstrip("/"))
+        if normalised == ".":
+            return ""
+        if normalised.startswith(".."):
+            raise ValueError(f"path escapes the storage location root: {prefix!r}")
+        return normalised
+
+    def dir_path(self, directory: str) -> str | None:
+        """The filesystem path of a project folder, or None if it is outside this location.
+
+        Unlike :meth:`full_path`, the ``path_prefix`` folder itself and its
+        parents map to the root (a listing there sees the whole storage
+        location).
+        """
+        scope = listing_scope(self.path_prefix, self._project_dir(directory))
+        if scope is None:
+            return None
+        return self.root if not scope else self._root_path(scope)
+
     def covers(self, path: str) -> bool:
         """Whether the project ``path`` can have a copy here (inside the ``path_prefix``)."""
         try:
@@ -133,8 +159,12 @@ class StorageLocation:
             raise SymlinkError(f"path goes through a symbolic link: {path!r}")
 
     def exists(self, path: str) -> bool:
-        """Return True if ``path`` exists."""
-        return self.fs.exists(self.full_path(path))
+        """Return True if ``path`` exists (False outside the ``path_prefix``: nothing can)."""
+        try:
+            full = self.full_path(path)
+        except PathOutsideStorageLocation:
+            return False  # invalid paths still raise ValueError
+        return self.fs.exists(full)
 
     def info(self, path: str) -> FileInfo:
         """Return the size and modification time of ``path``.
@@ -377,7 +407,7 @@ class StorageLocation:
         omits subdirectories it fails to list, so it is not used). Symbolic
         links (to files or directories) are skipped (STO-15).
         """
-        scope = listing_scope(self.path_prefix, prefix.rstrip("/"))
+        scope = listing_scope(self.path_prefix, self._project_dir(prefix))
         if scope is None:
             return  # the prefix is outside this storage location's path_prefix
         base = self.root if not scope else self._root_path(scope)

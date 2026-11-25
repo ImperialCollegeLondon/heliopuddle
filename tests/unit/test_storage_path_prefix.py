@@ -112,3 +112,38 @@ def test_no_prefix_is_unchanged(tmp_path: Path) -> None:
     assert loc.full_path("x.csv") == f"{loc.root}/x.csv"
     assert [e.path for e in loc.list_files()] == ["upload_mirror/x.csv"]
     assert loc.covers("anything/at/all.csv")
+
+
+def test_listing_prefixes_are_validated_and_normalised(prefixed: StorageLocation) -> None:
+    prefixed.write("upload_mirror/x.csv", io.BytesIO(b"1"))
+    assert [e.path for e in prefixed.list_files("./upload_mirror")] == ["upload_mirror/x.csv"]
+    assert [e.path for e in prefixed.list_files("upload_mirror/a/..")] == ["upload_mirror/x.csv"]
+    for bad in ("../x", "a\\b", "/abs"):
+        with pytest.raises(ValueError):
+            list(prefixed.list_files(bad))
+
+
+def test_outside_paths_read_as_not_found(prefixed: StorageLocation) -> None:
+    with pytest.raises(FileNotFoundError):
+        prefixed.info("elsewhere/x.csv")
+    assert not prefixed.exists("elsewhere/x.csv")
+    with pytest.raises(ValueError):
+        prefixed.exists("../escape")
+
+
+def test_folder_paths_include_the_prefix_folder_itself(prefixed: StorageLocation) -> None:
+    assert prefixed.dir_path("upload_mirror") == prefixed.root
+    assert prefixed.dir_path("") == prefixed.root
+    assert prefixed.dir_path("upload_mirror/a") == f"{prefixed.root}/a"
+    assert prefixed.dir_path("elsewhere") is None
+
+
+def test_repair_finds_staged_files_next_to_a_file_in_the_prefix_folder(
+    prefixed: StorageLocation,
+) -> None:
+    from heliopuddle.server.services.upload.objects import temp_files
+
+    token = str(uuid.uuid4())
+    staged = prefixed.write_staged("upload_mirror/x.csv", token, io.BytesIO(b"new"))
+    assert temp_files(prefixed, "upload_mirror/x.csv") == ([staged], [])
+    assert temp_files(prefixed, "elsewhere/x.csv") == ([], [])

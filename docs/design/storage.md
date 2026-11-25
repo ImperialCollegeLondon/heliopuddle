@@ -376,8 +376,13 @@ The mapping lives only in `StorageLocation` (helpers in
 `storage/paths.py`), so it works for every backend and nothing else changes:
 
 - every path argument is a project path; `full_path` strips the prefix
-  (`strip_path_prefix`) and raises `PathOutsideStorageLocation`, a
-  `ValueError`, for a path outside it; `covers(path)` asks without raising;
+  (`strip_path_prefix`) and raises `PathOutsideStorageLocation` for a path
+  outside it. That error is both a `ValueError` and a `FileNotFoundError`:
+  nothing can exist there, so a copy left outside a changed prefix reads as
+  gone (the index marks it, a delete completes, a read tries the next copy),
+  and `exists` answers False; `covers(path)` asks without raising, and
+  `dir_path(folder)` maps a project folder (the prefix folder itself and its
+  parents map to the root);
 - `list_files(prefix)` takes a project listing prefix and yields project
   paths (`<prefix>/<rel>`); a listing prefix that is the folder or one of its
   parents lists the whole root (`listing_scope`), one outside it lists
@@ -393,11 +398,17 @@ Around it:
 - **Uploads and registration** refuse a path outside the target storage
   location's prefix with `422` before anything is written
   (`api.errors.require_covered`).
-- **Clients** get `path_prefix` in the storage-location record and pass it
-  to `StorageLocation` for direct access.
+- **Clients** get `path_prefix` in the storage-location record. A prefixed
+  storage location reports `direct_access: false`, because a client released
+  before `path_prefix` would put files at `<root>/<project path>`; clients
+  that know the field pass it to `StorageLocation`.
 - **Identity:** `storage_location.path_prefix` (migration 0003) is compared
   at config sync; a change moves every copy, so they are reset as for a
-  changed `url` (SVC-12).
+  changed `url` (SVC-12), and the incremental watermark of every rule into
+  that storage location is dropped, so its next run is full. An index run
+  checks the URL and prefix together (`StorageLocationConfig.identity`), so
+  one started before a prefix change does not advance progress. A rule's
+  saved continuation hashes its destination's prefix with its spec.
 - The prefix is validated when the config loads: relative, `/`-separated,
   with no empty, `.` or `..` segment, no `\` and no glob character.
 

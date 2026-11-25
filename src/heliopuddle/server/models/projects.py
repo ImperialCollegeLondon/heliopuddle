@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from heliopuddle.config import ProjectConfig
-from heliopuddle.server.database.orm import IndexProgress, Project, StorageLocation
+from heliopuddle.server.database.orm import IndexProgress, Project, RuleState, StorageLocation
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +52,11 @@ def sync_config(session: Session, projects: Mapping[str, ProjectConfig]) -> None
                     session,
                     row,
                     name,
-                    f"{row.url} (path_prefix {row.path_prefix!r})",
-                    f"{loc_cfg.display_url} (path_prefix {loc_cfg.path_prefix!r})",
+                    repr(row.path_prefix),
+                    repr(loc_cfg.path_prefix),
+                    what="path_prefix",
                 )
+                _restart_rules_into(session, project.id, cfg, loc_cfg.name)
             row.url = loc_cfg.display_url
             row.path_prefix = loc_cfg.path_prefix
             row.accept_external_changes = loc_cfg.accept_external_changes
@@ -65,13 +67,37 @@ def sync_config(session: Session, projects: Mapping[str, ProjectConfig]) -> None
     session.flush()
 
 
+def _restart_rules_into(
+    session: Session, project_id: int, cfg: ProjectConfig, destination: str
+) -> None:
+    """Forget the incremental watermark of every rule copying or moving into ``destination``.
+
+    Its ``path_prefix`` changed (STO-23), so files that were never candidates
+    may now be: the next run is a full one rather than one that only looks
+    at files changed since the old watermark.
+    """
+    names = [r.name for r in cfg.rules if r.destination == destination]
+    if names:
+        session.execute(
+            update(RuleState)
+            .where(RuleState.project_id == project_id, RuleState.rule_name.in_(names))
+            .values(watermark_at=None, watermark_id=None)
+        )
+
+
 def _url_changed(session: Session, row: StorageLocation, project: str, new_url: str) -> None:
     """Treat a storage location's new URL as "the disk moved, with its data" (SVC-12)."""
-    storage_location_moved(session, row, project, row.url, new_url)
+    storage_location_moved(session, row, project, row.url, new_url, what="URL")
 
 
 def storage_location_moved(
-    session: Session, row: StorageLocation, project: str, old: str, new: str
+    session: Session,
+    row: StorageLocation,
+    project: str,
+    old: str,
+    new: str,
+    *,
+    what: str = "root",
 ) -> None:
     """Reset a storage location whose root moved from ``old`` to ``new`` (SVC-12, STO-19).
 
@@ -86,6 +112,7 @@ def storage_location_moved(
         project: project name, for the log.
         old: the previous root, for the log.
         new: the new root, for the log.
+        what: what changed, for the log (``URL``, ``path_prefix`` or ``root``).
     """
     from heliopuddle.server.models.index import reset_observations
 
@@ -94,11 +121,12 @@ def storage_location_moved(
     session.refresh(row, with_for_update={"key_share": True})
     count = reset_observations(session, row.id)
     logger.warning(
-        "The URL of storage location %r of project %r changed from %s to %s. hp assumes the "
+        "The %s of storage location %r of project %r changed from %s to %s. hp assumes the "
         "data moved with it: %d copies are now pending re-check (hash and size kept, "
         "observations cleared) and index progress is reset, so the next full index (the "
         "adoption run on start) re-checks every copy against the new root: same content "
         "becomes available, different content unknown, absent copies deleted or missing.",
+        what,
         row.name,
         project,
         old,

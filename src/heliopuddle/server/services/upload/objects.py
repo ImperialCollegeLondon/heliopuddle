@@ -102,8 +102,11 @@ def temp_files(store: StorageLocation, path: str) -> tuple[list[str], list[str]]
     """
     directory = posixpath.dirname(path)
     basename = posixpath.basename(path)
+    folder = store.dir_path(directory)
+    if folder is None:
+        return [], []  # outside the storage location's path_prefix: nothing there
     try:
-        names = store.fs.ls(store.full_path(directory) if directory else store.root, detail=False)
+        names = store.fs.ls(folder, detail=False)
     except FileNotFoundError:
         return [], []
     staged: list[str] = []

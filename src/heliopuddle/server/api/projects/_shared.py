@@ -29,6 +29,10 @@ def _direct_access(url: str, cfg: StorageLocationConfig | None) -> bool:
     is covered; while it cannot be resolved the answer is False. Only the
     flag is returned, never the resolved credentials.
     """
+    if cfg is not None and cfg.path_prefix:
+        # A client released before path_prefix (STO-23) would put files at
+        # <root>/<project path>; only the server maps them.
+        return False
     if cfg is None or not cfg.uses_blocks:
         return not server_only(cfg.url if cfg is not None else url)
     try:

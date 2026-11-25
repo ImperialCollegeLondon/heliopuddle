@@ -195,7 +195,10 @@ rules:
   (even a rule matching `**`), and uploading one there is refused.
 - `path_prefix` is a plain folder such as `upload_mirror` or `data/mirror`
   (no `..`, wildcards or leading `/`). Changing it later counts as moving the
-  storage location: its copies are checked again.
+  storage location: its copies are checked again, and rules into it start
+  again from a full run.
+- Clients transfer files in such a storage location through the API rather
+  than directly.
 
 It works the same for every kind of storage location, not only rclone.
 

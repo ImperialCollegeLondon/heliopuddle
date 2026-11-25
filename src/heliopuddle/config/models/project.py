@@ -26,7 +26,7 @@ from heliopuddle.config.placeholders import (
 )
 from heliopuddle.durations import Duration
 from heliopuddle.storage.backends import server_only
-from heliopuddle.storage.paths import normalise_path_prefix
+from heliopuddle.storage.paths import normalise_path_prefix, storage_identity
 
 
 class StorageLocationConfig(BaseModel):
@@ -113,6 +113,15 @@ class StorageLocationConfig(BaseModel):
         Safe for logs and messages; it is also the storage location's ``url`` in the DB.
         """
         return self.url if self.url is not None else f"prefect-block:{self.block}"
+
+    @property
+    def identity(self) -> str:
+        """What must not change under a running index: the URL plus any ``path_prefix``.
+
+        Compared with :func:`heliopuddle.server.models.storage_identity` of the
+        DB row, so a prefix change (STO-23) stops an index started before it.
+        """
+        return storage_identity(self.display_url, self.path_prefix)
 
     @property
     def uses_blocks(self) -> bool:

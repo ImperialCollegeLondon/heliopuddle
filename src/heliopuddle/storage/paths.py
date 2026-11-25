@@ -116,7 +116,8 @@ class ListEntry:
     """One file found by :meth:`StorageLocation.list_files`.
 
     Attributes:
-        path: relative, ``/``-separated path within the storage location.
+        path: the relative, ``/``-separated project path (including the
+            storage location's ``path_prefix``, if any).
         size: size in bytes.
         mtime: modification time (timezone-aware), if the backend reports one.
         md5: the backend's own md5 (hex) if it reports one, else None.
@@ -136,8 +137,14 @@ class FileInfo:
     mtime: datetime | None
 
 
-class PathOutsideStorageLocation(ValueError):
-    """A project path that a storage location with a ``path_prefix`` cannot hold (STO-23)."""
+class PathOutsideStorageLocation(FileNotFoundError, ValueError):
+    """A project path that a storage location with a ``path_prefix`` cannot hold (STO-23).
+
+    Both a ``ValueError`` (an invalid path for this storage location) and a
+    ``FileNotFoundError``: nothing can exist there, so code that treats "not
+    found" as gone (index removals, deletes, reads that try the next copy)
+    handles a copy left outside a changed prefix correctly.
+    """
 
 
 _GLOB_CHARS = frozenset("*?[]{}")
@@ -148,10 +155,10 @@ def normalise_path_prefix(prefix: str | None) -> str:
 
     The prefix is the project folder that the storage location's root holds,
     e.g. ``upload_mirror`` or ``data/mirror``: relative, ``/``-separated, one
-    or more plain segments. Leading and trailing ``/`` are dropped.
+    or more plain segments. A trailing ``/`` is dropped.
 
     Raises:
-        ValueError: an absolute path, a ``\\``, an empty, ``.`` or ``..``
+        ValueError: an absolute path (a leading ``/``), a ``\\``, an empty, ``.`` or ``..``
             segment, or a glob character.
     """
     if not prefix:
@@ -200,3 +207,9 @@ def listing_scope(path_prefix: str, prefix: str) -> str | None:
     if prefix.startswith(path_prefix + "/"):
         return prefix[len(path_prefix) + 1 :]
     return None
+
+
+def storage_identity(url: str, path_prefix: str) -> str:
+    """A storage location's identity for "did it move?" checks: URL plus ``path_prefix``."""
+    url = url.rstrip("/")
+    return f"{url} [path_prefix={path_prefix}]" if path_prefix else url
