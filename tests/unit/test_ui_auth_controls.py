@@ -67,6 +67,18 @@ def test_the_project_picker_shows_what_the_api_returns() -> None:
     assert "No projects are configured" in browser.get("/").text
 
 
+def test_a_user_without_any_role_is_told_they_have_no_access() -> None:
+    """Signed in (e.g. through a platform's single sign-on) but with no hp role: the empty
+    project list says so, instead of suggesting that no project is configured."""
+    factory = AuthFactory(users={"ann": (PASSWORD, [])}, projects=[])
+    browser = ui(factory)
+    login(browser)
+    page = browser.get("/").text
+    assert "No access yet" in page
+    assert "hp-reader" in page
+    assert "No projects are configured" not in page
+
+
 @pytest.mark.parametrize(
     ("roles", "granted"),
     [

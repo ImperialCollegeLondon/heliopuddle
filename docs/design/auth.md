@@ -385,7 +385,9 @@ Every UI page except `/login`, `/auth/callback` and `/static` requires a
 session; a missing or expired one redirects to `/login?next=...`, and a `401`
 from the API clears the session the same way. A `403`/`404` from the API shows
 the existing error page. The project picker lists whatever `GET /projects`
-returns (already filtered). Templates ask the session's roles (`can('hp-operator',
+returns (already filtered). A user who is signed in but holds no hp role at all (e.g.
+through a portal's single sign-on) sees "No access yet" and the role to ask for,
+not the "no projects configured" message. Templates ask the session's roles (`can('hp-operator',
 project)`) before showing "Index now", "Reconcile now", "Accept", delete and the
 rule controls; the API remains the enforcer.
 

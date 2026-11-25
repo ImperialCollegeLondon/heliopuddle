@@ -62,8 +62,13 @@
 </section>
 {% else %}
 <div class="card empty-card">
+  {% if auth_user and not auth_user.roles %}
+  <h2>No access yet</h2>
+  <p class="empty">You are signed in as {{ auth_user.username }}, but you have no role on any project. Ask an administrator for the hp-reader role, for every project or for one (hp-reader:&lt;project&gt;).</p>
+  {% else %}
   <h2>No projects yet</h2>
   <p class="empty">No projects are configured. Add a project YAML file to the config directory.</p>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}
