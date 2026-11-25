@@ -156,6 +156,49 @@ Values taken from blocks and the environment are hidden in logs and error
 messages. The API returns a storage location's URL and options only to users
 with the `hp-client-storage-read-write` role.
 
+## A storage location that holds one folder
+
+A storage location can hold just one folder of the project instead of all of
+it. Set `path_prefix` to that folder: the storage location's root then holds
+what the project calls that folder.
+
+Say `share` holds the whole project, including a folder `upload_mirror/`, and
+a SharePoint library should receive only that folder, with its contents at the
+top of the library:
+
+```yaml
+storage_locations:
+  - name: share
+    url: file:///data/project
+  - name: sharepoint
+    url: rclone://sharepoint/Shared Documents/upload_mirror
+    path_prefix: upload_mirror
+    storage_options: { config_block: sharepoint-rclone }
+
+rules:
+  - name: mirror-uploads
+    action: copy
+    source: share
+    destination: sharepoint
+    match:
+      paths: ["upload_mirror/**"]
+    schedule: "*/15 * * * *"
+```
+
+- `upload_mirror/2026/report.csv` is copied to
+  `Shared Documents/upload_mirror/2026/report.csv` in SharePoint (the
+  library's `upload_mirror` folder is the storage location's root).
+- The file keeps one name everywhere in heliopuddle: its project path,
+  `upload_mirror/2026/report.csv`. Files found in SharePoint by an index are
+  added under `upload_mirror/` too.
+- Files outside `upload_mirror/` never go to `sharepoint`: rules skip them
+  (even a rule matching `**`), and uploading one there is refused.
+- `path_prefix` is a plain folder such as `upload_mirror` or `data/mirror`
+  (no `..`, wildcards or leading `/`). Changing it later counts as moving the
+  storage location: its copies are checked again.
+
+It works the same for every kind of storage location, not only rclone.
+
 ## rclone (SharePoint, OneDrive, Box)
 
 [rclone](https://rclone.org/) reaches more than seventy storage services. An

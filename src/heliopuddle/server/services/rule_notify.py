@@ -67,6 +67,11 @@ def _notify(
                         now=now,
                         file_ids=affected,
                         limit=1,
+                        within=(
+                            ctx.projects[project].storage_location(rule.destination).path_prefix
+                            if rule.destination
+                            else ""
+                        ),
                     )
                 ):
                     matching.append(rule.name)

@@ -9,6 +9,7 @@ from heliopuddle.server import models
 from heliopuddle.server.api.deps import Ctx, User, require_project, requires
 from heliopuddle.server.api.errors import (
     check_upload_size,
+    require_covered,
 )
 from heliopuddle.server.api.repair import attempt_write
 from heliopuddle.server.api.uploads._shared import read_file
@@ -67,6 +68,7 @@ def reserve_upload(
             status_code=422,
             detail=[{"loc": ["body", "path"], "msg": str(e), "type": "value_error"}],
         ) from None
+    require_covered(ctx, project, location, body.path)
 
     def attempt() -> uploads_db.Reservation:
         # Looked at outside the transaction: a small race remains (an object that

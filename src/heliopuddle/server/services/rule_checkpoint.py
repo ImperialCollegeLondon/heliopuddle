@@ -162,6 +162,7 @@ def _candidates(
             after_id=checkpoint.full_after_id,
             through=checkpoint.selected_at if checkpoint.full_after_id is None else None,
             limit=limit,
+            within=rule.within,
         )
 
 
@@ -187,6 +188,7 @@ def _remaining(
             changed_after=lower,
             age_since=checkpoint.selected_at,
             limit=1,
+            within=rule.within,
         )
     if not late:
         return None

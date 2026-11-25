@@ -26,6 +26,7 @@ from heliopuddle.config.placeholders import (
 )
 from heliopuddle.durations import Duration
 from heliopuddle.storage.backends import server_only
+from heliopuddle.storage.paths import normalise_path_prefix
 
 
 class StorageLocationConfig(BaseModel):
@@ -64,12 +65,23 @@ class StorageLocationConfig(BaseModel):
         "on object stores, whose bucket or container must already exist",
     )
     quota: Size | None = Field(default=None, gt=0, description="Optional indexed-size quota")
+    path_prefix: str = Field(
+        default="",
+        description="The project folder this storage location's root holds, e.g. "
+        "upload_mirror: the project path upload_mirror/x.csv is stored at <root>/x.csv and "
+        "paths outside it cannot have a copy here (STO-23). Empty: the whole project",
+    )
 
     #: Where the storage location was configured, e.g. ``proj.yaml: storage_locations.0``;
     #: set by the loader, used to name the field in credential problems.
     _origin: str | None = PrivateAttr(default=None)
     #: Whether this is the project's first storage location (set by ProjectConfig).
     _first: bool = PrivateAttr(default=False)
+
+    @field_validator("path_prefix")
+    @classmethod
+    def _path_prefix(cls, v: str) -> str:
+        return normalise_path_prefix(v)
 
     @field_validator("url")
     @classmethod

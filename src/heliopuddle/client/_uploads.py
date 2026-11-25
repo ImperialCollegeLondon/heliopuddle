@@ -178,7 +178,10 @@ class UploadsMixin(ClientBase):
                         )
                 else:
                     store = StorageLocation(
-                        location.url, location.storage_options, location.create_root
+                        location.url,
+                        location.storage_options,
+                        location.create_root,
+                        location.path_prefix,
                     )
                     store.write(reservation.write_path, GuardedReader(raw, renewer))  # type: ignore[arg-type]
                 renewer.raise_if_lost()

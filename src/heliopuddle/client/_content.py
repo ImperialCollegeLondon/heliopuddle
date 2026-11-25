@@ -131,7 +131,10 @@ class ContentMixin(FilesMixin):
                 _ResponseStream(self._request("GET", f"/files/{file.id}/content", stream=True))
             )
         return StorageLocation(
-            location.url, location.storage_options, location.create_root
+            location.url,
+            location.storage_options,
+            location.create_root,
+            location.path_prefix,
         ).open_read(file.path)
 
 

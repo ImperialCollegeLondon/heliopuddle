@@ -335,7 +335,7 @@ def open_location(cfg: StorageLocationConfig, cls: type[_S] = StorageLocation) -
     problems = _check(url, options)
     if problems:
         raise StorageLocationIncomplete(problems)
-    return cls(url, options, cfg.create_root)
+    return cls(url, options, cfg.create_root, cfg.path_prefix)
 
 
 def root_identity(url: str) -> str:

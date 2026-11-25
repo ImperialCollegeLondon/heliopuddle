@@ -21,6 +21,8 @@ storage_locations:
     quota: 2TiB                          # binary units are allowed
   - name: scratch
     url: file:///data/scratch
+    path_prefix: scratch                 # its root holds only the project folder
+                                         # scratch/: scratch/x.csv is stored at x.csv
   - name: offsite
     block: offsite-fs                    # a Prefect RemoteFileSystem block instead of url:
                                          # its basepath is the url, its settings the options

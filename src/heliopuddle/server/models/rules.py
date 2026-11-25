@@ -202,6 +202,7 @@ def select_candidates(
     file_ids: Sequence[int] | None = None,
     limit: int = 1000,
     after_id: int | None = None,
+    within: str = "",
 ) -> list[RuleCandidate]:
     """Select at most ``limit`` exact matches, using bounded SQL keyset pages.
 
@@ -218,7 +219,9 @@ def select_candidates(
     cursor or make a file eligible twice.
 
     ``file_ids`` restricts the same matcher for best-effort change triggers.
-    No state is written by selection.
+    ``within`` (the destination's ``path_prefix``, STO-23) keeps only files
+    below that project folder: the destination cannot hold any other, so
+    they are never candidates. No state is written by selection.
     """
     if limit <= 0 or file_ids == []:
         return []
@@ -226,6 +229,8 @@ def select_candidates(
     base = _base_selection(
         project_id, source_id, match, now=now, updated=updated, through=through, file_ids=file_ids
     )
+    if within:
+        base = base.where(File.path.like(like_escape(within) + "/%", escape="\\"))
     changed: ColumnElement[bool] | None = None
     if changed_after is not None:
         changed = after_key(updated, changed_after)

@@ -86,6 +86,8 @@ class StorageLocation(Base):
     # The credential-free root a block-configured storage location last resolved
     # to (STO-19); a change means the data moved (SVC-12). NULL until resolved.
     resolved_root: Mapped[str | None] = mapped_column(String(2048), nullable=True, default=None)
+    # The project folder the root holds (STO-23); '' for the whole project.
+    path_prefix: Mapped[str] = mapped_column(String(1024), default="", server_default="")
     accept_external_changes: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 

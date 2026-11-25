@@ -333,6 +333,11 @@ in that module (rclone's `SHA256SUMS` are PGP-signed; pinning them avoids
 needing gpg). `HELIOPUDDLE_RCLONE_AUTO_DOWNLOAD=false` disables it. A failure
 makes the rclone storage locations incomplete.
 
+### A storage location that holds one folder
+
+See [Partial storage locations](#partial-storage-locations-path_prefix): an
+rclone mirror of one project folder is the typical case.
+
 ### Constraints
 
 - An rclone storage location cannot be a project's first storage location
@@ -356,6 +361,45 @@ credentials (`401`); `operations/copyfile` from a local absolute path and
 `operations/hashsum` with `quickxor` or `sha1` on a local file work;
 `--rc-serve` honours `Range` (`206`); `operations/movefile` replaces the
 destination; `operations/about` fails with an error on backends without it.
+
+## Partial storage locations (`path_prefix`)
+
+A storage location may hold one project folder rather than the whole
+project (STO-23). With `path_prefix: upload_mirror`, its root holds what the
+project calls `upload_mirror/`: the project path `upload_mirror/x.csv` is
+stored at `<root>/x.csv`, and no path outside `upload_mirror/` can have a copy
+there. Typical use: `storageA` (a share) holds the whole project and
+`storageB` (an rclone remote) has its root at the equivalent of
+`storageA/upload_mirror`, filled by a rule copying `upload_mirror/**`.
+
+The mapping lives only in `StorageLocation` (helpers in
+`storage/paths.py`), so it works for every backend and nothing else changes:
+
+- every path argument is a project path; `full_path` strips the prefix
+  (`strip_path_prefix`) and raises `PathOutsideStorageLocation`, a
+  `ValueError`, for a path outside it; `covers(path)` asks without raising;
+- `list_files(prefix)` takes a project listing prefix and yields project
+  paths (`<prefix>/<rel>`); a listing prefix that is the folder or one of its
+  parents lists the whole root (`listing_scope`), one outside it lists
+  nothing, so the index adopts what it finds as `upload_mirror/...` and
+  `index.incremental_prefixes` keep working;
+- staging names (`<path>.<token>.hp-tmp`) are project paths too, so they land
+  next to the file inside the root.
+
+Around it:
+
+- **Rules** pass the destination's prefix to `select_candidates`
+  (`within`), so a file outside it is never selected, counted or retried.
+- **Uploads and registration** refuse a path outside the target storage
+  location's prefix with `422` before anything is written
+  (`api.errors.require_covered`).
+- **Clients** get `path_prefix` in the storage-location record and pass it
+  to `StorageLocation` for direct access.
+- **Identity:** `storage_location.path_prefix` (migration 0003) is compared
+  at config sync; a change moves every copy, so they are reset as for a
+  changed `url` (SVC-12).
+- The prefix is validated when the config loads: relative, `/`-separated,
+  with no empty, `.` or `..` segment, no `\` and no glob character.
 
 ## Backend-specific knowledge is isolated
 

@@ -46,7 +46,17 @@ def sync_config(session: Session, projects: Mapping[str, ProjectConfig]) -> None
                 session.add(row)
             elif row.url.rstrip("/") != loc_cfg.display_url.rstrip("/"):
                 _url_changed(session, row, name, loc_cfg.display_url)
+            elif row.path_prefix != loc_cfg.path_prefix:
+                # Every copy's place in the store moved (STO-23).
+                storage_location_moved(
+                    session,
+                    row,
+                    name,
+                    f"{row.url} (path_prefix {row.path_prefix!r})",
+                    f"{loc_cfg.display_url} (path_prefix {loc_cfg.path_prefix!r})",
+                )
             row.url = loc_cfg.display_url
+            row.path_prefix = loc_cfg.path_prefix
             row.accept_external_changes = loc_cfg.accept_external_changes
             row.active = True
         for loc_name, row in existing.items():

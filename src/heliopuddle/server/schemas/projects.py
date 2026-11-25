@@ -39,6 +39,11 @@ class StorageLocationRead(BaseModel):
         description="incomplete: a Prefect block it needs is missing or cannot be loaded "
         "(STO-18); calls that need it return 409 storage_location_incomplete",
     )
+    path_prefix: str = Field(
+        default="",
+        description="The project folder this storage location's root holds (STO-23); "
+        "empty for the whole project. Clients map project paths below it",
+    )
     direct_access: bool = Field(
         default=True,
         description="False for storage locations only the server reaches (rclone, STO-05): "

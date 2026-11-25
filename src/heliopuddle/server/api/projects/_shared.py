@@ -58,6 +58,7 @@ def storage_location_read(
         "active": row.active,
         "create_root": cfg.create_root if cfg else "auto",
         "quota": cfg.quota if cfg else None,
+        "path_prefix": cfg.path_prefix if cfg else "",
         "status": "incomplete" if problems else "ok",
         "direct_access": _direct_access(row.url, cfg),
         "problems": problems,

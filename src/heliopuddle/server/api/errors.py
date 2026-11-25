@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from heliopuddle.server import models
+from heliopuddle.server.context import AppContext
 from heliopuddle.server.database.orm import utcnow
 from heliopuddle.server.schemas import (
     Busy,
@@ -188,3 +189,26 @@ def install_rclone_busy(app: FastAPI, wait: Callable[[], float]) -> None:
     app.state.rclone_wait = wait
     app.add_middleware(RcloneWaitMiddleware, wait=wait)
     app.add_exception_handler(RcloneBusyError, _rclone_busy)
+
+
+def require_covered(ctx: AppContext, project: str, storage_location: str, path: str) -> None:
+    """``422`` when ``path`` is outside the storage location's ``path_prefix`` (STO-23).
+
+    Checked before any write: such a storage location holds only one project
+    folder, so a copy elsewhere cannot exist. An unknown storage location is
+    left to the caller's own ``404``.
+    """
+    cfg = ctx.storage_location_config(project, storage_location)
+    if cfg is None or not cfg.path_prefix or path.startswith(cfg.path_prefix + "/"):
+        return
+    raise HTTPException(
+        status_code=422,
+        detail=[
+            {
+                "loc": ["body", "path"],
+                "msg": f"storage location {storage_location!r} holds only paths below "
+                f"{cfg.path_prefix + '/'!r}",
+                "type": "value_error",
+            }
+        ],
+    )
