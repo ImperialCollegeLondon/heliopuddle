@@ -23,6 +23,7 @@ from heliopuddle.server.models import index as index_db
 from heliopuddle.server.schemas import FileState
 from heliopuddle.server.services.index_models import IndexCounts, IndexEntry
 from heliopuddle.server.services.index_names import SYSTEM_USER
+from heliopuddle.server.services.stores import note_resolved_root
 from heliopuddle.storage import StorageLocation
 from heliopuddle.storage.credentials import open_location
 from heliopuddle.versioning import InvalidVersionError, derive
@@ -79,7 +80,9 @@ def resolve_location(ctx: AppContext, project: str, storage_location: str) -> Lo
             raise models.NotFoundError(f"storage location {project}/{storage_location} not found")
         if row.url.rstrip("/") != location_cfg.display_url.rstrip("/"):
             raise RuntimeError(f"storage location {project}/{storage_location} config changed")
-        return Location(project_cfg, location_cfg, row.project_id, row.id)
+    # A block whose root moved resets the copies before this run compares them.
+    note_resolved_root(ctx, project, location_cfg)
+    return Location(project_cfg, location_cfg, row.project_id, row.id)
 
 
 # --- observing one object -------------------------------------------------------

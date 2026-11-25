@@ -10,12 +10,20 @@ again.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 
+from heliopuddle.config import StorageLocationConfig
+from heliopuddle.server import models
 from heliopuddle.server.context import AppContext
 from heliopuddle.storage import StorageLocation
-from heliopuddle.storage.credentials import open_location
+from heliopuddle.storage.credentials import (
+    StorageLocationIncomplete,
+    open_location,
+    resolve,
+    root_identity,
+)
 
 
 def store_for(ctx: AppContext, project: str, storage_location: str) -> StorageLocation:
@@ -33,7 +41,53 @@ def store_for(ctx: AppContext, project: str, storage_location: str) -> StorageLo
     cfg = ctx.storage_location_config(project, storage_location)
     if cfg is None:
         raise LookupError(f"storage location {project}/{storage_location} is not in config")
-    return open_location(cfg)
+    store = open_location(cfg)
+    note_resolved_root(ctx, project, cfg)
+    return store
+
+
+_seen_roots: dict[tuple[str, str], str] = {}
+_seen_lock = threading.Lock()
+
+
+def note_resolved_root(ctx: AppContext, project: str, cfg: StorageLocationConfig) -> None:
+    """Reset a block-configured storage location whose resolved root changed (STO-19, SVC-12).
+
+    A storage location configured through Prefect blocks keeps its configured
+    ``url`` (``prefect-block:<name>`` or a placeholder) when the block's base
+    path changes, so the move is detected here instead, on every open: the
+    credential-free root (:func:`root_identity`) is compared with the one
+    stored in ``storage_location.resolved_root``. The first one is recorded; a
+    different one resets the copies exactly as a changed ``url`` does. A
+    per-process cache skips the database while the root is unchanged. Nothing
+    happens for storage locations without blocks (``sync_config`` covers them)
+    or while the blocks cannot be resolved.
+
+    Args:
+        ctx: the app context.
+        project: project name.
+        cfg: the storage location config.
+    """
+    if not cfg.uses_blocks:
+        return
+    try:
+        url, _options = resolve(cfg)
+    except StorageLocationIncomplete:
+        return
+    identity = root_identity(url)
+    key = (project, cfg.name)
+    with _seen_lock:
+        if _seen_roots.get(key) == identity:
+            return
+    with ctx.write_session() as session:
+        row = models.get_storage_location(session, project, cfg.name)
+        if row is None:
+            return
+        if row.resolved_root is not None and row.resolved_root != identity:
+            models.storage_location_moved(session, row, project, row.resolved_root, identity)
+        row.resolved_root = identity
+    with _seen_lock:
+        _seen_roots[key] = identity
 
 
 @dataclass(frozen=True)
@@ -77,4 +131,4 @@ def observe(store: StorageLocation, path: str) -> Observation | None:
     return Observation(size=after.size, mtime=after.mtime, hash=digest)
 
 
-__all__ = ["Observation", "ObservationChanged", "observe", "store_for"]
+__all__ = ["Observation", "ObservationChanged", "note_resolved_root", "observe", "store_for"]

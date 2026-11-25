@@ -26,6 +26,7 @@ import threading
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from urllib.parse import urlsplit, urlunsplit
 
 from heliopuddle.config.placeholders import PLACEHOLDER, is_whole_placeholder
 from heliopuddle.storage.backends import server_only
@@ -44,6 +45,7 @@ __all__ = [
     "open_location",
     "register_problem_check",
     "resolve",
+    "root_identity",
     "set_block_resolver",
     "set_clock",
 ]
@@ -334,3 +336,19 @@ def open_location(cfg: StorageLocationConfig, cls: type[_S] = StorageLocation) -
     if problems:
         raise StorageLocationIncomplete(problems)
     return cls(url, options, cfg.create_root)
+
+
+def root_identity(url: str) -> str:
+    """A storage location root without credentials: scheme, host, port and path.
+
+    User info (and any password), query and fragment are dropped, so the value
+    is safe to store and compare (STO-19).
+
+    Args:
+        url: a resolved storage URL.
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if parts.port is not None:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path.rstrip("/"), "", ""))

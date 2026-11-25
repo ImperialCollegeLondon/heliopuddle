@@ -39,6 +39,7 @@ from heliopuddle.server.models.projects import (
     get_project,
     get_storage_location,
     list_storage_locations,
+    storage_location_moved,
     sync_config,
 )
 from heliopuddle.server.models.search import (
@@ -102,6 +103,7 @@ __all__ = [
     "set_copy_verified",
     "set_rules_ignored",
     "sort_versions",
+    "storage_location_moved",
     "sync_config",
     "to_file_read",
     "update_metadata",
