@@ -18,7 +18,7 @@ Status key: **planned**, **in review**, **building**, **paused**, **done**.
 | M5A | Auth | done |
 | M6 | UI redesign and cross-project search | done |
 | M6A | Number and text versions; rule ages; alpha hardening | done (alpha-readiness additions in PR) |
-| M7 | Storage locations: SFTP, credentials and rclone | building |
+| M7 | Storage locations: SFTP, credentials and rclone | in review |
 | M8 | File analysis and pipelines | planned |
 | M9 | Post-ingest jobs | planned |
 

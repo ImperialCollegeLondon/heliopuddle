@@ -126,7 +126,7 @@ quoted in them. Credentials belong in `storage_options` (`${ENV}`).
 *Verify:* unit tests of `redact_url`, `redact_text`, the root-missing error and the
 startup error.
 
-**STO-05 (M7, rewritten)** **rclone storage locations.** `rclone://<remote>/<path>`
+**STO-05 (M7)** **rclone storage locations.** `rclone://<remote>/<path>`
 is an fsspec backend (`heliopuddle.storage.rclone`) over a local `rclone rcd`
 (STO-20). Reads stream with HTTP Range from `--rc-serve`. Writes spool to a
 local file (computing md5) and commit with `operations/copyfile` from the

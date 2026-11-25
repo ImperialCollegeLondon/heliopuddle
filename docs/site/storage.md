@@ -222,7 +222,8 @@ as long as it is needed:
   therefore serialised: plan rule schedules and batch sizes with that in mind.
 - **Private.** rclone listens on a Unix socket in a private temporary
   directory with a new random password each time, and is stopped (and its
-  temporary config deleted) when the work is done or heliopuddle exits.
+  temporary config deleted) `HELIOPUDDLE_RCLONE_IDLE` (default `2s`) after the
+  work is done, or when heliopuddle exits.
 - **Requests.** A web request that needs an rclone storage location waits up
   to `HELIOPUDDLE_RCLONE_API_WAIT` for the config to be free, then answers
   `503` with `Retry-After`.
