@@ -2,7 +2,9 @@
 
 Startup order: settings → project config (the generated default config file if
 there are no project files) and database (migrate or check) → config sync →
-storage location roots checked or created → Prefect (external check or embedded server) → index
+storage location roots checked or created → Prefect (external check or embedded server) →
+Prefect block resolver installed and the roots of storage locations that use
+blocks checked (an incomplete one is skipped with a warning) → index
 concurrency limits and stale index deployments removed → served deployments →
 adoption runs for storage locations never fully indexed → uvicorn. Shutdown
 (SIGINT/SIGTERM) runs in reverse: uvicorn, the served deployments, then the
@@ -35,6 +37,7 @@ from heliopuddle.server.database.migrate import (
     is_at_head,
     upgrade_to_head,
 )
+from heliopuddle.server.services.blocks import install_block_resolver
 from heliopuddle.server.services.deploy import (
     ServicesRunner,
     build_deployments,
@@ -61,6 +64,7 @@ from heliopuddle.server.serving import (
 )
 from heliopuddle.settings import Settings
 from heliopuddle.storage import StorageLocation, StorageRootMissingError
+from heliopuddle.storage.credentials import StorageLocationIncomplete, open_location
 from heliopuddle.storage.redact import redact_text, redact_url
 
 logger = logging.getLogger(__name__)
@@ -113,14 +117,19 @@ def load_settings(host: str | None = None, port: int | None = None) -> Settings:
         raise StartupError(format_settings_error(e), EXIT_CONFIG) from None
 
 
-def ensure_storage_roots(ctx: AppContext) -> None:
+def ensure_storage_roots(ctx: AppContext, *, blocks: bool = False) -> None:
     """Check, and create where ``create_root`` allows, every storage location root (STO-08).
 
     Every storage location in the project config is active, so each one is
-    checked.
+    checked. Storage locations that use Prefect blocks (STO-18, STO-19) are
+    checked in a second pass (``blocks=True``) once Prefect is up; one that is
+    incomplete (a block is missing or Prefect cannot be reached) is skipped
+    with a warning naming the problems, never a startup error.
 
     Args:
         ctx: the app context.
+        blocks: check the storage locations that use Prefect blocks (True) or
+            the others (False).
 
     Raises:
         StartupError: (exit code 2) naming the project, storage location and
@@ -128,15 +137,25 @@ def ensure_storage_roots(ctx: AppContext) -> None:
     """
     for project in ctx.projects.values():
         for cfg in project.storage_locations:
+            if cfg.uses_blocks != blocks:
+                continue
             try:
-                StorageLocation(cfg.url, cfg.storage_options, cfg.create_root).ensure_root()
+                open_location(cfg).ensure_root()
+            except StorageLocationIncomplete as e:
+                logger.warning(
+                    "Storage location %r of project %r is incomplete and is not checked; "
+                    "it cannot be used until this is fixed (no restart needed): %s",
+                    cfg.name,
+                    project.project,
+                    "; ".join(e.problems),
+                )
             except Exception as e:
                 detail = redact_text(
                     str(e) if isinstance(e, StorageRootMissingError) else f"{type(e).__name__}: {e}"
                 )
                 raise StartupError(
                     f"Cannot use storage location {cfg.name!r} of project {project.project!r} "
-                    f"({redact_url(cfg.url)}): {detail}",
+                    f"({redact_url(cfg.display_url)}): {detail}",
                     EXIT_CONFIG,
                 ) from None
 
@@ -169,7 +188,7 @@ def prepare_database(settings: Settings, migrate: bool = True) -> AppContext:
             "directory of project YAML files to configure your own",
             settings.config_dir.resolve(),
             default_config_path(settings.data_dir).resolve(),
-            StorageLocation(store.url).root,
+            StorageLocation(store.display_url).root,
         )
 
     db = describe_db_url(settings.resolved_database_url)
@@ -365,6 +384,10 @@ def run(options: StartOptions) -> None:
                 prefect = start_prefect(settings)
             except PrefectStartupError as e:
                 raise StartupError(str(e)) from None
+            # Blocks resolve lazily through Prefect, so only now (STO-18, STO-19).
+            install_block_resolver()
+            assert ctx is not None
+            ensure_storage_roots(ctx, blocks=True)
         if shutdown.event.is_set():
             return
         if options.services:

@@ -12,6 +12,7 @@ nav:
   - Home: index.md
   - Quick start: quick-start.md
   - Configuration: configuration.md
+  - Storage locations: storage.md
   - Docker: docker.md
   - Keycloak: keycloak.md
   - Environment variables: environment.md

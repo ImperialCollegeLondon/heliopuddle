@@ -44,9 +44,9 @@ def sync_config(session: Session, projects: Mapping[str, ProjectConfig]) -> None
             if row is None:
                 row = StorageLocation(project_id=project.id, name=loc_cfg.name)
                 session.add(row)
-            elif row.url.rstrip("/") != loc_cfg.url.rstrip("/"):
-                _url_changed(session, row, name, loc_cfg.url)
-            row.url = loc_cfg.url
+            elif row.url.rstrip("/") != loc_cfg.display_url.rstrip("/"):
+                _url_changed(session, row, name, loc_cfg.display_url)
+            row.url = loc_cfg.display_url
             row.accept_external_changes = loc_cfg.accept_external_changes
             row.active = True
         for loc_name, row in existing.items():

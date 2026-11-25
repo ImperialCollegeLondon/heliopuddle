@@ -2,8 +2,10 @@
 
 Every service opens a store through :func:`store_for`, with the URL and
 storage options from the loaded project config (never the DB, so secrets stay
-in the environment). :func:`observe` is the one consistent observation of an
-object (SVC-16): stat, hash by reading, stat again.
+in the environment or in Prefect blocks, resolved by
+:func:`heliopuddle.storage.credentials.open_location`). :func:`observe` is the
+one consistent observation of an object (SVC-16): stat, hash by reading, stat
+again.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from datetime import datetime
 
 from heliopuddle.server.context import AppContext
 from heliopuddle.storage import StorageLocation
+from heliopuddle.storage.credentials import open_location
 
 
 def store_for(ctx: AppContext, project: str, storage_location: str) -> StorageLocation:
@@ -25,11 +28,12 @@ def store_for(ctx: AppContext, project: str, storage_location: str) -> StorageLo
 
     Raises:
         LookupError: the storage location is not in the loaded config.
+        StorageLocationIncomplete: a Prefect block it needs is missing (STO-18).
     """
     cfg = ctx.storage_location_config(project, storage_location)
     if cfg is None:
         raise LookupError(f"storage location {project}/{storage_location} is not in config")
-    return StorageLocation(cfg.url, cfg.storage_options, cfg.create_root)
+    return open_location(cfg)
 
 
 @dataclass(frozen=True)

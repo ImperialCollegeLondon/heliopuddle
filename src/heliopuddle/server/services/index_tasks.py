@@ -37,6 +37,7 @@ from heliopuddle.server.services.index_models import (
 from heliopuddle.server.services.index_names import SYSTEM_USER, IndexMode
 from heliopuddle.server.services.index_sweep import sweep_temp_file
 from heliopuddle.storage import StorageLocation
+from heliopuddle.storage.credentials import open_location
 
 
 class _BatchRun:
@@ -53,9 +54,7 @@ class _BatchRun:
         self.ctx = ctx
         self.project, self.storage_location = project, storage_location
         self.loc = resolve_location(ctx, project, storage_location)
-        self.store = HashingStore(
-            self.loc.config.url, self.loc.config.storage_options, self.loc.config.create_root
-        )
+        self.store = open_location(self.loc.config, HashingStore)
         self.seen_at = listed_at or utcnow()
         self.now = utcnow()
         self.counts = IndexBatchResult()

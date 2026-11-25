@@ -86,19 +86,34 @@ A storage location's credentials can come from four places; they can be mixed.
 
 Placeholders are checked for syntax when the config is loaded. Blocks are
 resolved lazily, when a storage location is used, by
-`storage/credentials.py` (`resolve_location`), with a 60s cache, so a block
-created or changed after startup is picked up without a restart. The Prefect
-lookups are a resolver the server registers (`set_block_resolver`); without
-one (unit tests, client) placeholders are unresolvable.
+`storage/credentials.py` (`resolve` gives the URL and options;
+`open_location` builds the `StorageLocation`; `location_problems` lists the
+problems and never raises), with a 60s cache per block (missing and failed
+lookups are cached too), so a block created or changed after startup is picked
+up without a restart. The Prefect lookups are a resolver the server registers
+(`set_block_resolver`; `server/services/blocks.py`, installed after Prefect is
+up and by flow-run processes); without one (unit tests, client) placeholders
+are unresolvable. Other modules add problems for a resolved storage location
+with `register_problem_check` (rclone uses it).
+
+A whole-value placeholder takes the secret's value as JSON only when it is a
+JSON object or array, so a password such as `12345` stays a string. A
+storage location configured with `block:` shows as `prefect-block:<name>` in
+logs, messages and the DB `storage_location.url` column; a `url` with
+placeholders is stored unresolved. Inline options are merged over the block's
+settings key by key (nested mappings merge recursively).
 
 **A missing block never stops startup**, because the user needs the server
 running to create it. The storage location is **incomplete** instead:
 
 - the startup root check skips it with a warning naming the file, field and
-  block;
+  block (storage locations that use blocks are checked once Prefect is up);
 - a run that uses it fails with the same message; other storage locations
   keep working;
-- an API call that needs it returns `409 storage_location_incomplete`;
+- an API call that needs it returns `409` with
+  `{detail, reason: "storage_location_incomplete", problems}`; the client
+  transfers through the API (not directly) while a storage location is
+  incomplete, so it gets that error too;
 - the storage-locations API returns `status: ok | incomplete` and
   `problems: [str]`, and the UI's storage pages show a warning with the
   problems and a link to the Prefect blocks page.
@@ -108,7 +123,10 @@ rclone binary that cannot be found or downloaded make a storage location
 incomplete in the same way.
 
 Resolved values are treated like `${VAR}` values: redacted in logs and errors
-(STO-16) and returned only to `hp-client-storage-read-write`.
+(STO-16; resolved Secret values are registered with `storage/redact.py`) and
+returned only to `hp-client-storage-read-write` (`GET
+/storage-locations/{name}` returns the resolved `url` and `storage_options`,
+or the configured ones while incomplete).
 
 ## rclone
 
@@ -180,25 +198,44 @@ rcd's API can read and write anything rclone can reach, including every
 configured remote's tokens, so:
 
 - rcd listens only on a Unix socket in the session's 0700 temp directory
-  (loopback TCP with the same auth where Unix sockets are unavailable), with
-  a random 32-byte user and password per session, never `--rc-no-auth`,
-  `--rc-web-gui` or metrics;
+  (loopback TCP with the same auth where Unix sockets are unavailable, or
+  where the socket path would be too long), with a random 32-byte user and
+  password per session, never `--rc-no-auth`, `--rc-web-gui` or metrics. The
+  user and password reach rcd as `RCLONE_RC_USER`/`RCLONE_RC_PASS` in its
+  environment (readable only by its owner), not as `--rc-user`/`--rc-pass`
+  (any local user can read a command line), and every inherited `RCLONE_*`
+  variable is dropped, so none (such as `RCLONE_RC_NO_AUTH`) can loosen this;
+- only remotes defined in the session's configs can be addressed (the remote
+  name is checked; rclone's on-the-fly `:backend:` and local paths are not);
 - hp calls only `operations/{list,stat,about,hashsum,copyfile,movefile,deletefile,mkdir,rmdir,purge}`,
   `config/listremotes`, `core/version`, `core/quit` and `--rc-serve` GETs;
-- rcd runs in its own process group, is stopped with the session and killed
-  if hp exits (atexit, and a parent-death signal on Linux);
+- rcd runs in its own process group, is stopped (SIGTERM; `core/quit` where
+  there are no signals) with the session and killed if hp exits (atexit, and
+  a parent-death signal on Linux);
 - the credentials and config contents never appear in logs, errors, the API
   or run parameters.
 
 ### Reads and writes
 
 - Reads stream from `--rc-serve` (`GET /[remote:path]/file` with `Range`).
-- Writes spool to a local file in the session directory while hashing it;
-  commit is `operations/copyfile` from the spool (rcd runs on the same
-  machine), so the size is known and backends without streamed uploads
-  (OneDrive/SharePoint) use their normal chunked upload with rclone's
-  retries. A failing source never reaches the remote; abort deletes the
-  spool.
+- Writes spool to a local file in a private (0700) temp directory while
+  hashing it (md5); commit is `operations/copyfile` from the spool (rcd runs
+  on the same machine), so the size is known and backends without streamed
+  uploads (OneDrive/SharePoint) use their normal chunked upload with rclone's
+  retries. The writer is a buffered (`AbstractBufferedFile`) writer, so
+  `backends.begin_write` defers its commit like an object store's: a failing
+  source never reaches the remote, abort deletes the spool, and `close()`
+  after an abort cannot commit. If the copy or the verification fails, a
+  destination the commit created is deleted.
+- Neither a reader nor a writer holds a session between calls: each range
+  read and each commit runs in its own session use (sessions stay open
+  `idle` seconds), so streaming a large source does not hold the config lock,
+  and a copy between two rclone configs in one thread cannot deadlock. A
+  thread that already uses a session and then needs a config it lacks gets an
+  error at once instead of waiting for itself.
+- Copies and moves pass `IgnoreTimes`: rclone otherwise treats an existing
+  destination of the same size and modification time as already transferred
+  (a move then just deletes the source).
 - `mv` is `operations/movefile`, which replaces an existing destination
   (`move_replaces` is true).
 - Free space is `operations/about`'s `free` when the backend reports it,
@@ -213,7 +250,11 @@ Each rclone storage location has `verify: auto | native | content | size`
 
 - `native`: compare the provider's own hash of the stored object
   (`operations/stat` with hashes: Box SHA1, OneDrive/SharePoint QuickXorHash)
-  with the same hash of the local spool (`operations/hashsum`). No download.
+  with the same hash of the local spool (`operations/hashsum`; for a remote
+  that reports md5, the md5 computed while spooling). The first type the
+  remote reports wins, in the order md5, sha1, quickxor, sha256, crc32c,
+  dropbox, hidrive, mailru, whirlpool, crc32. No download. The size is checked
+  too.
   QuickXorHash is not cryptographic, but it is computed by the provider from
   the stored bytes and catches corruption.
 - `content`: read the destination back and compare md5 (the rule elsewhere).
@@ -221,7 +262,12 @@ Each rclone storage location has `verify: auto | native | content | size`
 - `auto`: `native` when the backend reports a hash type that the local
   backend can compute, else `content`.
 
-hp still records the md5 (computed while spooling) as the file's hash. A
+hp still records the md5 (computed while spooling) as the file's hash. Each
+process remembers, for the objects it wrote, the size, the native hash type
+and value and the md5; `StorageLocation.md5` uses that md5 without reading
+the object (`backends.verified_md5` → `fs.hp_verified_md5`) only while the
+provider's hash (for `size`, the size) still matches; otherwise, and for
+`content`, it reads the content. A
 provider-computed hash of the stored bytes counts as verifying the
 destination hash for STO-03. SharePoint changes some uploaded files (mainly
 Office documents); `native` and `content` both detect it, and the transfer is
@@ -277,16 +323,25 @@ otherwise):
 
 4. **Whether `mv` replaces an existing destination** (`move_replaces`), used
    by the overwrite publish step ([operations](operations.md#overwrite)).
-   Local, memory and object stores replace; SMB and SFTP do not
+   Local, memory and object stores replace, and so does SFTP (fsspec's `mv`
+   is OpenSSH's atomic `posix-rename@openssh.com`); SMB does not
    (`NON_REPLACING_MOVE_PROTOCOLS`).
 5. **How to write so that a failed source never commits** (`begin_write`,
    `finish_write`, `abort_write`; see [Writes](#writes)).
 6. **Native free space** (`free_space(fs, path) -> int | None`): local via
    `shutil.disk_usage`, SMB via a volume-size query, SFTP via the
-   `statvfs@openssh.com` extension; unknown/unlimited backends return None.
+   `statvfs@openssh.com` extension, rclone through the filesystem's own
+   `hp_free_space` (`operations/about`); unknown/unlimited backends return None.
    Unexpected failures are reported, not silently treated as unlimited.
 7. **Same-filesystem copy capability** (`same_filesystem`): only confirmed
    compatible connections use generic `fs.copy`; all other transfers stream.
+8. **An md5 the backend vouches for** (`verified_md5`): the filesystem's own
+   `hp_verified_md5` (rclone, see [Verify](#verify)), else None.
+
+It also registers the `rclone` protocol by import path (besides the
+`fsspec.specs` entry point), so it resolves without a reinstall. hp's
+`heliopuddle/storage/rclone/` package is a backend package like s3fs and is
+exempt from the scan.
 
 Adding support for a new backend never needs changes elsewhere; at most a line
 in that module.

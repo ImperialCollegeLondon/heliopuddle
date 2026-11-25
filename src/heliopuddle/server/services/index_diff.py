@@ -24,6 +24,7 @@ from heliopuddle.server.schemas import FileState
 from heliopuddle.server.services.index_models import IndexCounts, IndexEntry
 from heliopuddle.server.services.index_names import SYSTEM_USER
 from heliopuddle.storage import StorageLocation
+from heliopuddle.storage.credentials import open_location
 from heliopuddle.versioning import InvalidVersionError, derive
 
 
@@ -64,11 +65,7 @@ class Location:
 
     @property
     def store(self) -> StorageLocation:
-        return StorageLocation(
-            self.config.url,
-            self.config.storage_options,
-            self.config.create_root,
-        )
+        return open_location(self.config)
 
 
 def resolve_location(ctx: AppContext, project: str, storage_location: str) -> Location:
@@ -80,7 +77,7 @@ def resolve_location(ctx: AppContext, project: str, storage_location: str) -> Lo
         row = models.get_storage_location(session, project, storage_location)
         if row is None or not row.active:
             raise models.NotFoundError(f"storage location {project}/{storage_location} not found")
-        if row.url.rstrip("/") != location_cfg.url.rstrip("/"):
+        if row.url.rstrip("/") != location_cfg.display_url.rstrip("/"):
             raise RuntimeError(f"storage location {project}/{storage_location} config changed")
         return Location(project_cfg, location_cfg, row.project_id, row.id)
 

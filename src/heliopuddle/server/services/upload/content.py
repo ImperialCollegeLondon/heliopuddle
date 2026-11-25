@@ -10,6 +10,7 @@ from heliopuddle.server.context import get_context
 from heliopuddle.server.models import transitions as tr
 from heliopuddle.server.models import uploads
 from heliopuddle.server.services.stores import store_for
+from heliopuddle.storage.credentials import StorageLocationIncomplete
 from heliopuddle.storage.location import CheckedReader, staging_path
 
 
@@ -49,7 +50,7 @@ def write_upload_content(token: str, source: BinaryIO) -> None:
                 cast(BinaryIO, CheckedReader(source, check)),
                 check=check,
             )
-        except (tr.StaleOperation, tr.CopyBusy):
+        except (tr.StaleOperation, tr.CopyBusy, StorageLocationIncomplete):
             raise
         except Exception as error:
             raise ContentWriteFailed(

@@ -14,7 +14,12 @@ from fastapi.responses import JSONResponse
 
 from heliopuddle.server import models
 from heliopuddle.server.database.orm import utcnow
-from heliopuddle.server.schemas import Busy, FileConflict, FileRead
+from heliopuddle.server.schemas import (
+    Busy,
+    FileConflict,
+    FileRead,
+    StorageLocationIncompleteError,
+)
 from heliopuddle.server.services.rule_control import (
     ReconcileBusyError,
     RuleBusyError,
@@ -22,6 +27,7 @@ from heliopuddle.server.services.rule_control import (
 )
 from heliopuddle.server.services.runs import RunSubmitError
 from heliopuddle.settings import Settings
+from heliopuddle.storage.credentials import StorageLocationIncomplete
 from heliopuddle.versioning import InvalidVersionError
 
 
@@ -128,3 +134,20 @@ def install_validation_scrub(app: FastAPI) -> None:
     would send a rejected password back (and into proxy logs).
     """
     app.add_exception_handler(RequestValidationError, _scrub_validation_error)
+
+
+def _storage_location_incomplete(request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, StorageLocationIncomplete)
+    body = StorageLocationIncompleteError(
+        detail=f"storage location incomplete: {exc}", problems=exc.problems
+    )
+    return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
+
+
+def install_storage_location_incomplete(app: FastAPI) -> None:
+    """Make :class:`StorageLocationIncomplete` answer ``409 storage_location_incomplete``.
+
+    The body is :class:`StorageLocationIncompleteError`: ``detail``,
+    ``reason: "storage_location_incomplete"`` and the ``problems`` (STO-18).
+    """
+    app.add_exception_handler(StorageLocationIncomplete, _storage_location_incomplete)

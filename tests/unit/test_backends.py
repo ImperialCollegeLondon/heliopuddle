@@ -15,6 +15,9 @@ from heliopuddle.storage import StorageLocation, backends
 SRC = Path(__file__).resolve().parents[2] / "src" / "heliopuddle"
 ROOT = SRC.parents[1]
 BACKENDS = SRC / "storage" / "backends.py"
+# hp's own rclone:// filesystem is a backend package (like s3fs), not hp code
+# that uses storage, so it may name what it implements.
+BACKEND_PACKAGES = (SRC / "storage" / "rclone",)
 
 # Protocol names, URL forms, backend packages and backend metadata keys that
 # may only appear in storage/backends.py.
@@ -50,7 +53,7 @@ _PATTERN = re.compile("|".join(f"(?:{t})" for t in FORBIDDEN_TOKENS), re.IGNOREC
 SCANNED_SUFFIXES = {".py", ".html", ".css", ".js", ".mako", ".yaml", ".toml"}
 
 # The target protocols of STO-06, per extra (DEP-08).
-TARGET_PROTOCOLS = ["file", "smb", "sftp", "s3", "az", "abfs", "gs", "gcs"]
+TARGET_PROTOCOLS = ["file", "smb", "sftp", "s3", "az", "abfs", "gs", "gcs", "rclone"]
 
 
 @pytest.mark.req("STO-06")
@@ -58,6 +61,8 @@ def test_no_backend_knowledge_outside_backends_module() -> None:
     offenders: list[str] = []
     for path in sorted(SRC.rglob("*")):
         if path == BACKENDS or not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
+            continue
+        if any(package in path.parents for package in BACKEND_PACKAGES):
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             match = _PATTERN.search(line)

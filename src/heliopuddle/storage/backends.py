@@ -26,6 +26,13 @@ needs a change anywhere else (at most a line here):
    connection identity and an implemented generic copy operation.
 8. **Whether a path is a local file path** (:func:`local_path`), for readers
    that need a real file (file previews of CDF files).
+9. **An md5 the backend vouches for** (:func:`verified_md5`): hp's ``rclone``
+   filesystem remembers the md5 of objects it wrote and verified with the
+   provider's own hash, so reading them back can be skipped.
+
+hp's own ``rclone`` filesystem (``heliopuddle/storage/rclone/``) is a backend
+package like the others; it answers the free-space and verified-md5 questions
+itself through the ``hp_free_space`` and ``hp_verified_md5`` methods.
 
 No other module in ``heliopuddle`` may name a protocol, a backend package or a
 backend's metadata key; ``tests/unit/test_backends.py`` scans the source tree
@@ -63,7 +70,15 @@ __all__ = [
     "path_has_symlink",
     "root_anchor",
     "same_filesystem",
+    "verified_md5",
 ]
+
+# hp's rclone:// filesystem. Also declared as an ``fsspec.specs`` entry point;
+# registered here by import path (nothing is imported until it is used) so it
+# resolves even in an environment installed before the entry point existed.
+fsspec.register_implementation(
+    "rclone", "heliopuddle.storage.rclone.fs.RcloneFileSystem", clobber=False
+)
 
 #: fsspec protocols of object stores (S3 and S3-compatible, GCS, Azure Blob and
 #: ADLS, Alibaba OSS, Cloudflare R2).
@@ -92,16 +107,21 @@ def is_object_store(protocols: str | tuple[str, ...] | list[str]) -> bool:
     return any(p.lower() in OBJECT_STORE_PROTOCOLS for p in _protocols(protocols))
 
 
-NON_REPLACING_MOVE_PROTOCOLS: frozenset[str] = frozenset({"smb", "sftp", "ssh"})
-"""Backends whose rename does not replace an existing destination."""
+NON_REPLACING_MOVE_PROTOCOLS: frozenset[str] = frozenset({"smb"})
+"""Backends whose rename does not replace an existing destination.
+
+fsspec's SFTP (``sftp``/``ssh``) is not one: its ``mv`` is OpenSSH's
+``posix-rename``, which replaces the destination atomically.
+"""
 
 
 def move_replaces(protocols: str | tuple[str, ...] | list[str]) -> bool:
     """Whether ``fs.mv(src, dst)`` replaces an existing ``dst`` on this backend.
 
-    Object stores (a move is copy then delete) and local/memory filesystems
-    replace; SMB and SFTP renames fail when the destination exists, so the
-    overwrite publish step backs up the original first (docs/design/operations.md).
+    Object stores (a move is copy then delete), local/memory filesystems and
+    fsspec's SFTP (``posix-rename@openssh.com``) replace; SMB renames fail
+    when the destination exists, so the overwrite publish step backs up the
+    original first (docs/design/operations.md).
     """
     return not any(p in NON_REPLACING_MOVE_PROTOCOLS for p in _protocols(protocols))
 
@@ -119,6 +139,9 @@ def free_space(fs: fsspec.AbstractFileSystem, path: str) -> int | None:
         fs: the connected filesystem.
         path: a filesystem path (normally the storage location root).
     """
+    own_answer = getattr(fs, "hp_free_space", None)
+    if callable(own_answer):  # the rclone filesystem: operations/about, or None
+        return cast(int | None, own_answer(path))
     protocols = set(_protocols(fs.protocol))
     if protocols & {"file", "local"}:
         current = Path(path).absolute()
@@ -149,6 +172,24 @@ def free_space(fs: fsspec.AbstractFileSystem, path: str) -> int | None:
         )
         return int((fragment_size or block_size) * available)
     return None
+
+
+def verified_md5(fs: fsspec.AbstractFileSystem, path: str) -> str | None:
+    """Return an md5 of ``path`` the filesystem vouches for without a read, else None.
+
+    Only a filesystem with ``hp_verified_md5`` (the rclone one) has any: the
+    md5 hp computed while writing an object it then verified with the
+    provider's own hash (or size, per its ``verify`` setting), still matching.
+    Anything else returns None and the caller reads the content.
+
+    Args:
+        fs: the connected filesystem.
+        path: a filesystem path on ``fs``.
+    """
+    own_answer = getattr(fs, "hp_verified_md5", None)
+    if not callable(own_answer):
+        return None
+    return cast(str | None, own_answer(path))
 
 
 def local_path(fs: fsspec.AbstractFileSystem, path: str) -> str | None:

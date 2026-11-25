@@ -34,6 +34,16 @@
 {% endif %}
 {%- endmacro %}
 
+{% macro incomplete(sl) -%}
+{% if sl.status == "incomplete" %}
+<div class="alert sl-incomplete" role="alert">
+  <strong>Storage location {{ sl.name }} is incomplete.</strong> It cannot be used until its Prefect blocks exist; no restart is needed.
+  <ul class="sl-problems">{% for p in sl.problems %}<li class="mono wrap">{{ p }}</li>{% endfor %}</ul>
+  {% if prefect_url %}<a href="{{ prefect_url }}/blocks" target="_blank" rel="noopener">Open the Prefect blocks page ↗</a>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
 {% macro hidden(pairs, skip=()) -%}
 {% for name, value in pairs %}{% if name not in skip %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
 {%- endmacro %}

@@ -236,11 +236,14 @@ class StorageLocation:
         return self.fs.open(self.full_path(path), "rb")  # type: ignore[return-value]
 
     def md5(self, path: str) -> str:
-        """Return the hex md5 of ``path``, always by reading and hashing its content.
+        """Return the hex md5 of ``path`` by hashing its content (never a stored md5).
 
-        A backend's stored md5 (:meth:`native_md5`) is metadata any writer can
-        set, so it is never used here.
+        Only a backend that verified hp's own write with the provider's hash
+        (:func:`~heliopuddle.storage.backends.verified_md5`) skips the read.
         """
+        known = backends.verified_md5(self.fs, self.full_path(path))
+        if known is not None:
+            return known
         with self.open_read(path) as f:
             return md5_stream(f)
 

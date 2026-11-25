@@ -150,7 +150,7 @@ spool, abort, verify modes, `about` fallbacks and errors.
 fsspec's `SFTPFileSystem` with no SFTP-specific code beyond the tables in
 `storage/backends.py`.
 *Verify:* the STO-07 conformance suite against an OpenSSH server container
-(integration), plus non-replacing moves, `statvfs` free space, `create_root:
+(integration), plus replacing moves (`posix-rename`), `statvfs` free space, `create_root:
 auto` creating the root, and key and password authentication.
 
 **STO-18 (M7)** **Credentials from config, environment or Prefect.** In a

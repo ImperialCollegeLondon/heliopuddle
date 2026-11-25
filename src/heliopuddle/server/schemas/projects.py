@@ -34,9 +34,30 @@ class StorageLocationRead(BaseModel):
     last_full_index_at: datetime | None = None
     last_incremental_index_at: datetime | None = None
     quota: int | None = None
+    status: Literal["ok", "incomplete"] = Field(
+        default="ok",
+        description="incomplete: a Prefect block it needs is missing or cannot be loaded "
+        "(STO-18); calls that need it return 409 storage_location_incomplete",
+    )
+    problems: list[str] = Field(
+        default_factory=list, description="Why the storage location is incomplete"
+    )
 
 
 class StorageLocationDetail(StorageLocationRead):
-    """Backend details requiring hp-client-storage-read-write on the project or hp-admin."""
+    """Backend details requiring hp-client-storage-read-write on the project or hp-admin.
+
+    ``url`` and ``storage_options`` are resolved from Prefect blocks (STO-18,
+    STO-19); while the storage location is incomplete they are the configured,
+    unresolved values.
+    """
 
     storage_options: dict[str, Any] = Field(default_factory=dict)
+
+
+class StorageLocationIncompleteError(BaseModel):
+    """Body of a ``409 storage_location_incomplete`` (STO-18)."""
+
+    detail: str
+    reason: Literal["storage_location_incomplete"] = "storage_location_incomplete"
+    problems: list[str] = Field(default_factory=list)

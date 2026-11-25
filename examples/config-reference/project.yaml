@@ -21,6 +21,12 @@ storage_locations:
     quota: 2TiB                          # binary units are allowed
   - name: scratch
     url: file:///data/scratch
+  - name: offsite
+    block: offsite-fs                    # a Prefect RemoteFileSystem block instead of url:
+                                         # its basepath is the url, its settings the options
+    storage_options:                     # merged over the block's settings
+      account_key: "{{ prefect.blocks.secret.offsite-key }}"  # a Prefect Secret block,
+                                         # resolved when used (cached 60s)
 
 index:
   full_schedule: "0 3 * * 0"             # cron: full index, Sundays 03:00

@@ -110,11 +110,19 @@ _context: AppContext | None = None
 
 
 def get_context() -> AppContext:
-    """Return the process context, building it from settings on first use."""
+    """Return the process context, building it from settings on first use.
+
+    Building it (as a flow-run process does) also installs the Prefect block
+    resolver, unless one is installed, so storage locations that use Prefect
+    blocks resolve there too (STO-18). Blocks are looked up lazily, on use.
+    """
     global _context
     with _lock:
         if _context is None:
+            from heliopuddle.server.services.blocks import install_block_resolver
+
             _context = AppContext.from_settings()
+            install_block_resolver(replace=False)
         return _context
 
 

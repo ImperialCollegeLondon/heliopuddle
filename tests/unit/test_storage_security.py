@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from heliopuddle.config import StorageLocationConfig
 from heliopuddle.server.start import StartupError, ensure_storage_roots
 from heliopuddle.storage import StorageLocation, StorageRootMissingError
 from heliopuddle.storage.location import SymlinkError
@@ -101,9 +102,7 @@ def test_root_missing_error_does_not_carry_the_password() -> None:
 
 @pytest.mark.req("STO-16")
 def test_startup_error_does_not_print_the_password(monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg = SimpleNamespace(
-        name="remote", url="sftp://bob:hunter2@host/x", storage_options={}, create_root="auto"
-    )
+    cfg = StorageLocationConfig(name="remote", url="sftp://bob:hunter2@host/x")
     ctx = SimpleNamespace(projects={"p": SimpleNamespace(project="p", storage_locations=[cfg])})
 
     class Boom:
@@ -113,7 +112,7 @@ def test_startup_error_does_not_print_the_password(monkeypatch: pytest.MonkeyPat
         def ensure_root(self) -> None:
             raise OSError("cannot connect to sftp://bob:hunter2@host/x")
 
-    monkeypatch.setattr("heliopuddle.server.start.StorageLocation", Boom)
+    monkeypatch.setattr("heliopuddle.server.start.open_location", lambda cfg: Boom())
     with pytest.raises(StartupError) as error:
         ensure_storage_roots(ctx)  # type: ignore[arg-type]
     assert "hunter2" not in str(error.value)

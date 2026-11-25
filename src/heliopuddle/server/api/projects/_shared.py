@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from heliopuddle.config import ProjectConfig, StorageLocationConfig
 from heliopuddle.server.schemas import ProjectRead
+from heliopuddle.storage.credentials import location_problems
 
 if TYPE_CHECKING:
     from heliopuddle.server.database.orm import IndexProgress, StorageLocation
@@ -27,7 +28,12 @@ def storage_location_read(
     *,
     include_url: bool = True,
 ) -> dict[str, Any]:
-    """The fields of a storage location's API record (``url`` blank unless ``include_url``)."""
+    """The fields of a storage location's API record (``url`` blank unless ``include_url``).
+
+    ``status`` and ``problems`` say whether its Prefect blocks resolve (STO-18);
+    an inactive storage location (no ``cfg``) is ``ok``.
+    """
+    problems = location_problems(cfg) if cfg else []
     return {
         "name": row.name,
         "url": row.url if include_url else "",
@@ -35,6 +41,8 @@ def storage_location_read(
         "active": row.active,
         "create_root": cfg.create_root if cfg else "auto",
         "quota": cfg.quota if cfg else None,
+        "status": "incomplete" if problems else "ok",
+        "problems": problems,
         **index_times(progress),
     }
 

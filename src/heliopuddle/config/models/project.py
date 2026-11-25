@@ -10,6 +10,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     field_validator,
     model_validator,
 )
@@ -17,20 +18,44 @@ from pydantic import (
 from heliopuddle.config.models.common import NAME_PATTERN, BatchConfig, Size, validate_cron
 from heliopuddle.config.models.rules import RuleConfig, RuleSpec
 from heliopuddle.config.models.versioning import DEFAULT_VERSION_RULES, VersionRule
+from heliopuddle.config.placeholders import (
+    BLOCK_NAME_PATTERN,
+    check_placeholders,
+    has_placeholders,
+    is_whole_placeholder,
+)
 from heliopuddle.durations import Duration
 
 
 class StorageLocationConfig(BaseModel):
-    """One storage location of a project."""
+    """One storage location of a project.
+
+    Exactly one of ``url`` and ``block`` (a Prefect RemoteFileSystem block,
+    STO-19) is set. ``url`` and every string of ``storage_options`` may hold
+    ``{{ prefect.blocks.secret.<name> }}`` placeholders (STO-18), and
+    ``storage_options`` may be one such placeholder; they are resolved lazily
+    by :mod:`heliopuddle.storage.credentials`.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(pattern=NAME_PATTERN)
-    url: str = Field(
+    url: str | None = Field(
+        default=None,
         min_length=1,
         description="fsspec URL of the root, e.g. file:///data or <protocol>://bucket/prefix",
     )
-    storage_options: dict[str, Any] = Field(default_factory=dict)
+    block: str | None = Field(
+        default=None,
+        pattern=BLOCK_NAME_PATTERN,
+        description="Prefect RemoteFileSystem block giving the URL (basepath) and "
+        "storage options (settings), instead of url",
+    )
+    storage_options: dict[str, Any] | str = Field(
+        default_factory=dict,
+        description="fsspec options, or one {{ prefect.blocks.secret.<name> }} placeholder "
+        "whose JSON value is the mapping",
+    )
     accept_external_changes: bool = True
     create_root: bool | Literal["auto"] = Field(
         default="auto",
@@ -38,6 +63,55 @@ class StorageLocationConfig(BaseModel):
         "on object stores, whose bucket or container must already exist",
     )
     quota: Size | None = Field(default=None, gt=0, description="Optional indexed-size quota")
+
+    #: Where the storage location was configured, e.g. ``proj.yaml: storage_locations.0``;
+    #: set by the loader, used to name the field in credential problems.
+    _origin: str | None = PrivateAttr(default=None)
+
+    @field_validator("url")
+    @classmethod
+    def _url_placeholders(cls, v: str | None) -> str | None:
+        if v is not None:
+            check_placeholders(v, "url")
+        return v
+
+    @field_validator("storage_options")
+    @classmethod
+    def _options_placeholders(cls, v: dict[str, Any] | str) -> dict[str, Any] | str:
+        if isinstance(v, str) and not is_whole_placeholder(v):
+            raise ValueError(
+                "must be a mapping, or a single {{ prefect.blocks.secret.<name> }} placeholder"
+            )
+        check_placeholders(v, "storage_options")
+        return v
+
+    @model_validator(mode="after")
+    def _url_or_block(self) -> StorageLocationConfig:
+        if (self.url is None) == (self.block is None):
+            raise ValueError(f"storage location {self.name!r}: set exactly one of url and block")
+        return self
+
+    @property
+    def display_url(self) -> str:
+        """The configured URL (placeholders unresolved), or ``prefect-block:<name>``.
+
+        Safe for logs and messages; it is also the storage location's ``url`` in the DB.
+        """
+        return self.url if self.url is not None else f"prefect-block:{self.block}"
+
+    @property
+    def uses_blocks(self) -> bool:
+        """Whether resolving this storage location needs Prefect blocks."""
+        return self.block is not None or has_placeholders(self.url, self.storage_options)
+
+    @property
+    def origin(self) -> str:
+        """Where this storage location is configured, for messages."""
+        return self._origin or f"storage location {self.name!r}"
+
+    def set_origin(self, origin: str) -> None:
+        """Record where this storage location is configured (``<file>: storage_locations.<i>``)."""
+        self._origin = origin
 
 
 _PREFIX_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")

@@ -48,7 +48,7 @@ __all__ = [
 
 
 class NonReplacingFS(MemoryFileSystem):
-    """A memory filesystem whose rename fails when the destination exists (like SMB/SFTP)."""
+    """A memory filesystem whose rename fails when the destination exists (like SMB)."""
 
     protocol = ("hpnorepl",)
     store: dict[str, Any] = {}  # noqa: RUF012 - fsspec's own class-level store

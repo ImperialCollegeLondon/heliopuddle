@@ -34,7 +34,7 @@ logger = run_logger("heliopuddle.server.services.transfer")
 
 def _configured(ctx: AppContext, project: str, name: str, url: str) -> None:
     cfg = ctx.storage_location_config(project, name)
-    if cfg is None or cfg.url != url:
+    if cfg is None or cfg.display_url != url:
         raise tr.StaleOperation(f"configured storage location {project}/{name} changed")
 
 

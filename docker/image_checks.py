@@ -1,4 +1,5 @@
-"""Checks that the heliopuddle image holds no test tooling or test files (DEP-16).
+"""Checks that the heliopuddle image holds no test tooling or test files (DEP-16)
+and has a working pinned rclone that fsspec resolves (DEP-21).
 
 Not copied into the image (``docker/`` is in .dockerignore): it is piped in by
 the e2e tests and the Docker publish workflow:
@@ -12,6 +13,8 @@ test file ships inside the installed ``heliopuddle`` package.
 from __future__ import annotations
 
 import importlib.util
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,8 +34,27 @@ def problems() -> list[str]:
     return found
 
 
+def rclone_problems() -> list[str]:
+    """What is wrong with the image's rclone (DEP-21)."""
+    found: list[str] = []
+    path = shutil.which("rclone")
+    if path is None:
+        found.append("rclone is not on PATH")
+    else:
+        out = subprocess.run([path, "version"], capture_output=True, text=True, timeout=60)
+        if out.returncode != 0 or not out.stdout.startswith("rclone v"):
+            found.append(f"rclone version failed: {out.returncode} {out.stderr.strip()[:200]}")
+    try:
+        import fsspec
+
+        fsspec.get_filesystem_class("rclone")
+    except Exception as e:  # not installed, or the entry point is missing
+        found.append(f"fsspec does not resolve rclone://: {type(e).__name__}: {e}")
+    return found
+
+
 if __name__ == "__main__":
-    issues = problems()
+    issues = problems() + rclone_problems()
     for issue in issues:
         print(issue)
     print("image checks:", "FAILED" if issues else "ok")
