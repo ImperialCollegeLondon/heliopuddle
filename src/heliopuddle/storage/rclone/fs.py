@@ -304,4 +304,4 @@ class RcloneFileSystem(AbstractFileSystem):
         """The md5 of an object hp wrote here, if the provider still vouches for it (else None)."""
         key = self._key(path)
         with self._session(key[1]) as session:
-            return verifying.verified_md5(session.client, key)
+            return verifying.verified_md5(session.client, key, self.verify)

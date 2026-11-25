@@ -276,7 +276,8 @@ Each rclone storage location has `verify: auto | native | content | size`
   QuickXorHash is not cryptographic, but it is computed by the provider from
   the stored bytes and catches corruption.
 - `content`: read the destination back and compare md5 (the rule elsewhere).
-- `size`: compare sizes only.
+- `size`: compare sizes only (the provider is asked for no hashes: some
+  backends read the whole object to compute them).
 - `auto`: `native` when the backend reports a hash type that the local
   backend can compute, else `content`.
 
@@ -285,7 +286,10 @@ process remembers, for the objects it wrote, the size, the native hash type
 and value and the md5; `StorageLocation.md5` uses that md5 without reading
 the object (`backends.verified_md5` → `fs.hp_verified_md5`) only while the
 provider's hash (for `size`, the size) still matches; otherwise, and for
-`content`, it reads the content. A
+`content`, it reads the content. A record is reused only as far as the
+*reading* storage location's `verify` allows, whichever mode wrote it:
+`content` never reuses one, `native` and `auto` reuse only a native-hash
+record, and `size` also reuses a size-only record. A
 provider-computed hash of the stored bytes counts as verifying the
 destination hash for STO-03. SharePoint changes some uploaded files (mainly
 Office documents); `native` and `content` both detect it, and the transfer is

@@ -112,7 +112,10 @@ def check_written(
     """
     if mode == "content":
         return Written(size, None, None, md5)
-    stored_size, hashes = remote_state(client, fs, remote)
+    # Size mode asks for no hashes: some backends read the whole object for them.
+    stored_size, hashes = remote_state(
+        client, fs, remote, () if mode == "size" else HASH_PREFERENCE
+    )
     if stored_size >= 0 and stored_size != size:
         raise RcloneVerifyError(
             f"rclone {fs}{remote}: stored size {stored_size} differs from the {size} bytes written"
@@ -157,17 +160,23 @@ def move_record(src: tuple[str, str, str], dst: tuple[str, str, str]) -> None:
             _records[dst] = written
 
 
-def verified_md5(client: RcClient, key: tuple[str, str, str]) -> str | None:
+def verified_md5(client: RcClient, key: tuple[str, str, str], mode: str) -> str | None:
     """The md5 hp wrote at ``key`` if the provider still vouches for the same bytes.
 
-    ``native``: the provider's hash still equals the one compared at write
-    time; ``size``: the size still matches. Otherwise (``content``, unknown
-    objects) None, and the caller reads the content.
+    A record is reused only as far as the reader's ``mode`` allows, whatever
+    mode wrote it: ``content`` never reuses one (the caller reads the
+    content); ``native`` and ``auto`` reuse only a native-hash record whose
+    hash the provider still reports; ``size`` also reuses a size-only record
+    while the size matches. Otherwise None, and the caller reads the content.
     """
+    if mode == "content":
+        return None
     with _records_lock:
         written = _records.get(key)
     if written is None or written.kind is None:
         return None
+    if written.kind == "size" and mode != "size":
+        return None  # a size-only check never vouches for bytes under a stricter mode
     _lock_name, fs, remote = key
     kinds = (written.kind,) if written.kind != "size" else ()
     try:
