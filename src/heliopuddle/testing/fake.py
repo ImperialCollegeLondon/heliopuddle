@@ -44,6 +44,8 @@ from pathlib import Path
 from typing import Any
 
 from heliopuddle.client import FileRecord, HelioPuddleError, NotFoundError
+from heliopuddle.client._retry import check_busy_retries
+from heliopuddle.client._sync import SyncMixin
 from heliopuddle.client.paging import FindAllMixin, Order
 from heliopuddle.server.schemas import (
     FileCheckResult,
@@ -56,7 +58,7 @@ from heliopuddle.testing._changes import ChangesMixin
 from heliopuddle.testing._helpers import Call, FindFilter, matches, parse_version, validate_path
 
 
-class FakeHelioPuddleClient(ChangesMixin, FindAllMixin):
+class FakeHelioPuddleClient(SyncMixin, ChangesMixin, FindAllMixin):
     """In-memory heliopuddle for tests; a drop-in for ``HelioPuddleClient``.
 
     Args:
@@ -67,6 +69,9 @@ class FakeHelioPuddleClient(ChangesMixin, FindAllMixin):
         storage_locations: names of the project's storage locations; the first
             is the default.
         user: recorded as ``created_by``/``updated_by``.
+        busy_retries: like the client's: how many times a call on a path made
+            busy with :meth:`inject_busy` is tried again (waiting its
+            ``retry_after``) before :class:`BusyError` is raised.
 
     Test helpers: :attr:`calls` (every call in order), :meth:`seed`,
     :meth:`inject_busy`, :meth:`inject_error`, :meth:`record_at`,
@@ -79,9 +84,11 @@ class FakeHelioPuddleClient(ChangesMixin, FindAllMixin):
         store: str | Path | None = None,
         storage_locations: Sequence[str] = ("primary",),
         user: str | None = None,
+        busy_retries: int = 0,
     ) -> None:
         if not storage_locations:
             raise ValueError("at least one storage location is needed")
+        self.busy_retries = check_busy_retries(busy_retries)
         self.project = project
         self.store = Path(store) if store is not None else None
         self.storage_locations = list(storage_locations)

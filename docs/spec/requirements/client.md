@@ -184,7 +184,8 @@ project or storage location `NotFoundError`.
 is an in-memory drop-in for the client's file methods (`register_file`,
 `add_file`, `get_file`, `get_file_by_path`, `check`, `find`, `find_all`,
 `list_files`, `latest`, `remove_file`, `update_metadata`, `set_content_date`, `accept_file`,
-`list_storage_locations`, `health`, `close`) with the same signatures, records and errors as the real
+`list_storage_locations`, `health`, `close`, and from M7 `sync_file` and
+`sync_removed`, the same code as the client's, CLI-18) with the same signatures, records and errors as the real
 client and API. It needs only the core install. With a `store` directory it
 verifies registrations against it, writes uploads to it and deletes removed
 objects from it, and records each copy's last observation (size, mtime, hash)
@@ -202,7 +203,8 @@ a different version for a live path); without an override a file is
 unversioned. Simplifications: one project, every path is its own series
 (latest when it has an `available` copy), verification is immediate, only the first storage
 location has a store (copies elsewhere are trusted), nothing is busy unless
-injected.
+injected. From M7 it takes `busy_retries` like the client (CLI-17): an
+injected busy path is tried again, waiting its `retry_after`.
 *Verify:* contract scenarios run against the fake and against the real
 client with the in-process API (unit) and with real `server start` processes
 on SQLite and Postgres (integration); a test compares every shared method's
@@ -251,3 +253,47 @@ calls `PATCH /files/{id}/content-date` (API-19); `None` goes back to the date
 in the path, or none. An unknown or deleted file, or another project's id,
 raises `NotFoundError`.
 *Verify:* unit tests against the in-process API.
+
+**CLI-17 (M7)** **Busy retries.** `HelioPuddleClient(..., busy_retries=0)`
+sends a call again when the API answers `409` with `Retry-After` (the path is
+owned by another operation and nothing was changed, so the same request is
+safe to repeat), waiting the `Retry-After` each time (1 s when it is not
+usable), at most `busy_retries` times; then `BusyError` is raised as before
+(CLI-08). The default 0 keeps raising at once. Other errors are never retried
+this way. A negative value raises `ValueError`.
+*Verify:* tests against a mock transport at the client's dependency floors
+(retry then success with the waits taken from `Retry-After`, exhaustion,
+default, other errors not retried, negative value refused) and the fake with
+injected busy paths.
+
+**CLI-18 (M7)** **Keeping a path in step with a local file.**
+`sync_file(local_path, path, storage_location=None, metadata=None, *,
+in_place=False, content_date=None, current=<look up>, dry_run=False) ->
+SyncResult` makes the live file at `path` hold `local_path`'s content. It
+hashes the local file once (md5 and size, `file_digest(path)`, also exported)
+and compares it with the live record (`current` when the caller already has it,
+e.g. from `find_all`, or None for none; otherwise looked up):
+
+- no live file: `register_file` when `in_place` (the content is already at
+  `path` in the storage location, e.g. a store the caller shares with hp),
+  else `add_file`; a `ConflictError` (another writer added different content
+  meanwhile) continues as a replace;
+- a different hash: with `in_place` and a copy already `unknown` (hp found the
+  change), `accept_file`, kept if the accepted hash is the local one;
+  otherwise `add_file(..., overwrite=True)`;
+- the same hash: only the metadata and the content date change.
+
+The record must then have the local hash and an `available` copy (in
+`storage_location`, else its first copy), or `SyncError` is raised with the
+record; `metadata`, when given, replaces the record's metadata, and
+`content_date`, when given, is set. `sync_removed(path, *, current=<look up>,
+dry_run=False) -> SyncResult` removes a live file at `path`; nothing live is
+`unchanged`, and a file still live after the delete (failed store delete, or
+changed content kept as `unknown`) raises `SyncError`. `SyncResult` holds the
+`action` (`SyncAction`: `added`, `updated`, `metadata`, `removed`,
+`unchanged`) and the record. A dry run makes no change and returns the action
+it would take. Both methods use only the client's public file methods, so the
+fake has the same code (CLI-14), and busy paths follow CLI-17.
+*Verify:* contract scenarios run against the fake and the real client with the
+in-process API (unit) and real `server start` processes (integration); a
+test of `file_digest`.

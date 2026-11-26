@@ -71,7 +71,8 @@ when the upload is abandoned.
      existing record (the client raises `ConflictError` without touching the
      store);
    - owned by another operation → `409 busy` with `Retry-After` (the client
-     raises `BusyError` with `retry_after`, without touching the store);
+     raises `BusyError` with `retry_after`, without touching the store, after
+     resending the reservation up to `busy_retries` times, CLI-17);
    - new path → `new`: a file row (series and version from the path rules,
      `metadata`, `content_date`; not latest) and a copy `pending` with a
      token; `write_path` is the final path;

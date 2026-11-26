@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from heliopuddle.client import BusyError, FileRecord, HelioPuddleError, NotFoundError
+from heliopuddle.client._retry import call_with_busy_retries
 from heliopuddle.server.schemas import FileState, FileStorageLocationRead
 from heliopuddle.testing._helpers import (
     LATEST_ELIGIBLE,
@@ -29,6 +30,7 @@ class FakeState:
     store: Path | None
     storage_locations: list[str]
     user: str | None
+    busy_retries: int
     calls: list[Call]
     closed: bool
     _files: dict[int, FileRecord]
@@ -45,8 +47,12 @@ class FakeState:
             queued = self._errors.get(key)
             if queued:
                 raise queued.pop(0)
-        if changes and isinstance(target, str) and self._busy.get(target):
-            raise BusyError(f"{target!r} is owned by another operation", self._busy[target].pop(0))
+        if changes and isinstance(target, str):
+            call_with_busy_retries(lambda: self._check_busy(target), self.busy_retries)
+
+    def _check_busy(self, path: str) -> None:
+        if self._busy.get(path):
+            raise BusyError(f"{path!r} is owned by another operation", self._busy[path].pop(0))
 
     def _live(self, path: str) -> FileRecord | None:
         for record in self._files.values():

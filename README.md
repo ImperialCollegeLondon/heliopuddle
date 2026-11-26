@@ -202,6 +202,30 @@ hp.update_metadata(record.id, {"reviewed": True})  # None removes a key
 hp.set_content_date("reports/2026/report_v003.csv", datetime(2026, 3, 4, tzinfo=UTC))
 ```
 
+Keep a path in step with a local file, e.g. from an application that mirrors
+its own files into heliopuddle. `sync_file` registers or uploads a new file,
+replaces changed content, updates the metadata and content date, and checks
+the result; `sync_removed` removes a live file. Both return the action taken
+and accept `dry_run=True`. Pass `in_place=True` when the content is already at
+the path in the storage location (a store you share with heliopuddle), so
+nothing is uploaded:
+
+```python
+hp = HelioPuddleClient(
+    api_url,
+    project="default",
+    client_id="...",
+    client_secret="...",
+    busy_retries=3,  # retry a path another operation owns
+)
+result = hp.sync_file(
+    "/data/reports/r_v001.csv", "reports/r_v001.csv", metadata={"source": "lab"}, in_place=True
+)
+print(result.action)  # added, updated, metadata or unchanged
+hp.sync_removed("reports/old.csv").action  # removed, or unchanged if nothing was live
+md5_hex, size = file_digest("/data/reports/r_v001.csv")  # from heliopuddle.client
+```
+
 ### Testing code that calls heliopuddle
 
 `heliopuddle.testing.FakeHelioPuddleClient` is an in-memory drop-in for the

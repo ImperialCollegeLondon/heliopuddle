@@ -62,7 +62,12 @@ src/heliopuddle/
   `pyyaml`); everything else the server uses comes from the `server` extra
   (DEP-17), so other applications can embed the client. An application that
   writes the store itself calls `register_file()` (`POST /projects/{p}/files`)
-  instead of `add_file()`.
+  instead of `add_file()`. An application that mirrors its own files into hp
+  calls `sync_file()` / `sync_removed()` (`client/_sync.py`, CLI-18): the
+  decide-and-apply logic (register or upload, accept or overwrite, metadata,
+  delete) built only on the public file methods, so the fake inherits it too.
+  `busy_retries` (`client/_retry.py`, CLI-17) resends a request answered
+  `409 busy`, in the client and the fake alike.
 - **testing** (`heliopuddle.testing`) is the harness for applications that call
   hp: `FakeHelioPuddleClient`, an in-memory stand-in for the client's file
   methods, and a pytest plugin (`heliopuddle_fake`, `heliopuddle_store`

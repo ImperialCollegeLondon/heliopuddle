@@ -1,6 +1,6 @@
 """Storage locations: fsspec wrappers used by the client and the services."""
 
-from heliopuddle.storage.hashing import md5_file, md5_stream
+from heliopuddle.storage.hashing import file_digest, md5_file, md5_stream
 from heliopuddle.storage.location import (
     FileInfo,
     ListEntry,
@@ -13,6 +13,7 @@ __all__ = [
     "ListEntry",
     "StorageLocation",
     "StorageRootMissingError",
+    "file_digest",
     "md5_file",
     "md5_stream",
 ]

@@ -49,3 +49,22 @@ def md5_file(path: str | Path, chunk_size: int = CHUNK_SIZE) -> str:
     """Return the hex md5 of a local file."""
     with open(path, "rb") as f:
         return md5_stream(f, chunk_size)
+
+
+def file_digest(path: str | Path, chunk_size: int = CHUNK_SIZE) -> tuple[str, int]:
+    """Return the hex md5 and the size in bytes of a local file, reading it once.
+
+    Args:
+        path: the local file.
+        chunk_size: bytes read at a time.
+
+    Returns:
+        ``(md5, size)``: the size is what was read, so the two always agree
+        even if the file changes on disk meanwhile.
+
+    Raises:
+        OSError: the file cannot be read (e.g. ``FileNotFoundError``).
+    """
+    with open(path, "rb") as f:
+        digest = md5_stream(f, chunk_size)
+        return digest, f.tell()

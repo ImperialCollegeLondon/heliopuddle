@@ -29,6 +29,7 @@ from heliopuddle.server.context import AppContext
 from heliopuddle.server.schemas import FileState, HealthResponse
 from heliopuddle.testing import Call, FakeHelioPuddleClient
 from tests.fake_contract import SCENARIOS, Harness, Scenario
+from tests.fake_contract_sync import SYNC_SCENARIOS
 
 
 @pytest.fixture(params=["api", "fake"])
@@ -52,6 +53,12 @@ def h(request: pytest.FixtureRequest, tmp_path: Path, store: Path) -> Iterator[H
 @pytest.mark.req("CLI-14")
 @pytest.mark.parametrize("scenario", list(SCENARIOS.values()), ids=list(SCENARIOS))
 def test_contract(h: Harness, scenario: Scenario) -> None:
+    scenario(h)
+
+
+@pytest.mark.req("CLI-14", "CLI-18")
+@pytest.mark.parametrize("scenario", list(SYNC_SCENARIOS.values()), ids=list(SYNC_SCENARIOS))
+def test_sync_contract(h: Harness, scenario: Scenario) -> None:
     scenario(h)
 
 

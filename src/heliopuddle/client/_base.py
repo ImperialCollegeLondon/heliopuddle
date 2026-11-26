@@ -9,6 +9,7 @@ from urllib.parse import quote
 import httpx
 
 from heliopuddle.client._http import api_error
+from heliopuddle.client._retry import call_with_busy_retries
 from heliopuddle.client.auth import AuthSession, LoginResult
 from heliopuddle.client.errors import NotFoundError, PermissionDeniedError
 from heliopuddle.server.schemas import (
@@ -30,6 +31,7 @@ class ClientBase:
     project: str | None
     user: str | None
     user_header: str
+    busy_retries: int
     _owns_http: bool
     _http: httpx.Client
     _auth: AuthSession
@@ -49,7 +51,28 @@ class ClientBase:
         body_factory: Callable[[], Iterator[bytes]] | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
-        """Send a request; raise for error statuses other than those in ``accept``."""
+        """Send a request; raise for error statuses other than those in ``accept``.
+
+        A ``409 busy`` is sent again up to :attr:`busy_retries` times (CLI-17).
+        """
+        return call_with_busy_retries(
+            lambda: self._send_once(
+                method, url, accept=accept, stream=stream, body_factory=body_factory, **kwargs
+            ),
+            self.busy_retries,
+        )
+
+    def _send_once(
+        self,
+        method: str,
+        url: str,
+        *,
+        accept: tuple[int, ...] = (),
+        stream: bool = False,
+        body_factory: Callable[[], Iterator[bytes]] | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """One attempt of :meth:`_request` (renewing the token once after a ``401``)."""
         extra_headers = kwargs.pop("headers", {})
         headers = {**extra_headers, **self._auth.headers()}
 

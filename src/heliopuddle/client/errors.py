@@ -103,3 +103,21 @@ class IntegrityError(Exception):
         self.file = file
         self.expected = file.hash
         self.actual = actual
+
+
+class SyncError(Exception):
+    """A synced file did not end up as asked (CLI-18).
+
+    Raised by :meth:`HelioPuddleClient.sync_file` when the record's hash is
+    not the local file's or its copy is not ``available`` (for example, the
+    store object did not match), and by :meth:`HelioPuddleClient.sync_removed`
+    when the file is still live (a store delete failed, or changed content was
+    kept). Not an API error: the API answered fine.
+
+    Attributes:
+        file: the record as heliopuddle has it now.
+    """
+
+    def __init__(self, message: str, file: FileRead) -> None:
+        super().__init__(message)
+        self.file = file

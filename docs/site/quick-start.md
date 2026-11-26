@@ -115,6 +115,30 @@ hp.download("reports/2026/report_v001.csv", "copy.csv")  # checks the md5
 Re-adding identical content is a no-op; different content at an existing path
 raises `ConflictError` unless `overwrite=True`.
 
+Keep a path in step with a local file, e.g. from an application that mirrors
+its own files into heliopuddle. `sync_file` registers or uploads a new file,
+replaces changed content, updates the metadata and content date, and checks
+the result; `sync_removed` removes a live file. Both return the action taken
+and accept `dry_run=True`. Pass `in_place=True` when the content is already at
+the path in the storage location (a store you share with heliopuddle), so
+nothing is uploaded:
+
+```python
+hp = HelioPuddleClient(
+    api_url,
+    project="default",
+    client_id="...",
+    client_secret="...",
+    busy_retries=3,  # retry a path another operation owns
+)
+result = hp.sync_file(
+    "/data/reports/r_v001.csv", "reports/r_v001.csv", metadata={"source": "lab"}, in_place=True
+)
+print(result.action)  # added, updated, metadata or unchanged
+hp.sync_removed("reports/old.csv").action  # removed, or unchanged if nothing was live
+md5_hex, size = file_digest("/data/reports/r_v001.csv")  # from heliopuddle.client
+```
+
 ### Testing code that uses heliopuddle
 
 Installing heliopuddle gives pytest the `heliopuddle_fake` and

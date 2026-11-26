@@ -104,7 +104,7 @@ def test_add_file_named_storage_location(
 def test_add_file_hash_mismatch_is_unknown(
     hp: HelioPuddleClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(client_module, "md5_file", lambda _p: "0" * 32)
+    monkeypatch.setattr(client_module, "file_digest", lambda _p: ("0" * 32, 1))
     rec = hp.add_file(_local(tmp_path, "c.dat", b"c"), "c.dat")
     assert rec.state == FileState.UNKNOWN
 

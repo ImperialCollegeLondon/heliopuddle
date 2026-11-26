@@ -12,7 +12,9 @@ import httpx
 
 from heliopuddle.client._base import ClientBase
 from heliopuddle.client._content import ContentMixin
+from heliopuddle.client._retry import check_busy_retries
 from heliopuddle.client._rules import RulesMixin
+from heliopuddle.client._sync import SyncMixin
 from heliopuddle.client._uploads import UploadsMixin
 from heliopuddle.client._users import UsersMixin
 from heliopuddle.client.auth import AuthSession, Credentials
@@ -42,7 +44,7 @@ __all__ = [
 DEFAULT_TIMEOUT = 300.0
 
 
-class HelioPuddleClient(UsersMixin, RulesMixin, UploadsMixin, ContentMixin, ClientBase):
+class HelioPuddleClient(SyncMixin, UsersMixin, RulesMixin, UploadsMixin, ContentMixin, ClientBase):
     """Client bound to one project.
 
     Talks to the API over HTTP only and writes file content to the store with
@@ -71,6 +73,10 @@ class HelioPuddleClient(UsersMixin, RulesMixin, UploadsMixin, ContentMixin, Clie
             account, which needs realm roles); with a username and password it
             identifies the client for the ``password`` grant.
         client_secret: the client's secret (sent with HTTP basic authentication).
+        busy_retries: how many times a call is sent again when its path is busy
+            (``409`` with ``Retry-After``: another operation owns it and nothing
+            was changed), waiting the ``Retry-After`` each time (CLI-17). 0 (the
+            default) raises :class:`BusyError` at once.
 
     At most one credential kind is allowed: ``token``, ``username`` with
     ``password``, or ``client_id`` with ``client_secret``. A token is fetched
@@ -78,7 +84,8 @@ class HelioPuddleClient(UsersMixin, RulesMixin, UploadsMixin, ContentMixin, Clie
     until shortly before it expires, and renewed once after a ``401``.
 
     Raises:
-        ValueError: conflicting or incomplete credentials.
+        ValueError: conflicting or incomplete credentials, or a negative
+            ``busy_retries``.
     """
 
     def __init__(
@@ -95,9 +102,11 @@ class HelioPuddleClient(UsersMixin, RulesMixin, UploadsMixin, ContentMixin, Clie
         password: str | None = None,
         client_id: str | None = None,
         client_secret: str | None = None,
+        busy_retries: int = 0,
     ) -> None:
         credentials = Credentials(token, username, password, client_id, client_secret)
         credentials.validate()
+        self.busy_retries = check_busy_retries(busy_retries)
         self.api_url = api_url
         self.project = project
         self.user = user

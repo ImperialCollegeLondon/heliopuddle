@@ -21,7 +21,7 @@ from heliopuddle.server.schemas import (
     UploadRequest,
     UploadReservation,
 )
-from heliopuddle.storage.hashing import CHUNK_SIZE, md5_file
+from heliopuddle.storage.hashing import CHUNK_SIZE, file_digest
 from heliopuddle.storage.location import StorageLocation
 
 COMPLETE_MAX_ATTEMPTS = 4
@@ -127,8 +127,7 @@ class UploadsMixin(ClientBase):
             raise FileNotFoundError(f"not a file: {source}")
         project = self._project()
         location = self._transfer_location(storage_location)
-        digest = md5_file(source)
-        size = source.stat().st_size
+        digest, size = file_digest(source)
 
         body = UploadRequest(
             path=path,

@@ -18,6 +18,7 @@ import pytest
 
 from heliopuddle.client import HelioPuddleClient
 from tests.fake_contract import SCENARIOS, Harness, Scenario
+from tests.fake_contract_sync import SYNC_SCENARIOS
 
 from .conftest import PROJECT, Deployment
 
@@ -33,4 +34,10 @@ def h(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Harness]:
 @pytest.mark.req("CLI-14")
 @pytest.mark.parametrize("scenario", list(SCENARIOS.values()), ids=list(SCENARIOS))
 def test_contract_against_a_real_server(h: Harness, scenario: Scenario) -> None:
+    scenario(h)
+
+
+@pytest.mark.req("CLI-14", "CLI-18")
+@pytest.mark.parametrize("scenario", list(SYNC_SCENARIOS.values()), ids=list(SYNC_SCENARIOS))
+def test_sync_contract_against_a_real_server(h: Harness, scenario: Scenario) -> None:
     scenario(h)
